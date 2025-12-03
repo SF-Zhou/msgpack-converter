@@ -223,15 +223,9 @@ describe('converter utilities', () => {
         /Failed to convert JSON to msgpack:/
       );
       
-      // Verify it's not "Unknown error"
-      try {
-        jsonToMsgpack('not valid json');
-        expect.fail('Should have thrown');
-      } catch (e) {
-        expect((e as Error).message).not.toContain('Unknown error');
-        // Should contain some indication of what went wrong
-        expect((e as Error).message).toContain('Expected');
-      }
+      // Verify it contains a descriptive error, not "Unknown error"
+      expect(() => jsonToMsgpack('not valid json')).toThrow(/Expected/);
+      expect(() => jsonToMsgpack('not valid json')).not.toThrow(/Unknown error/);
     });
 
     it('should provide descriptive error for missing quotes', () => {
@@ -247,12 +241,8 @@ describe('converter utilities', () => {
     });
 
     it('should not show Unknown error for json-bigint parse errors', () => {
-      try {
-        jsonToMsgpack('invalid');
-        expect.fail('Should have thrown');
-      } catch (e) {
-        expect((e as Error).message).not.toContain('Unknown error');
-      }
+      expect(() => jsonToMsgpack('invalid')).toThrow(/Failed to convert JSON to msgpack:/);
+      expect(() => jsonToMsgpack('invalid')).not.toThrow(/Unknown error/);
     });
   });
 });
