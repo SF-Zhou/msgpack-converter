@@ -1,6 +1,26 @@
 import { describe, it, expect } from 'vitest';
 import { msgpackToJson, jsonToMsgpack, isValidBase64, isValidJson } from './converter';
 
+/**
+ * Helper function to check if a msgpack marker byte is present in the encoded data
+ * @param base64Msgpack - The base64-encoded msgpack data
+ * @param marker - The msgpack format marker byte to search for
+ * @returns true if the marker is found in the data
+ */
+function hasMsgpackMarker(base64Msgpack: string, marker: number): boolean {
+  const decoded = atob(base64Msgpack);
+  for (let i = 0; i < decoded.length; i++) {
+    if (decoded.charCodeAt(i) === marker) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// Msgpack format markers
+const MSGPACK_FLOAT64 = 0xcb;
+const MSGPACK_UINT64 = 0xcf;
+
 describe('converter utilities', () => {
   describe('msgpackToJson', () => {
     it('should convert simple msgpack to JSON', () => {
@@ -111,6 +131,40 @@ describe('converter utilities', () => {
       const backToJson = msgpackToJson(msgpack);
       expect(backToJson).toContain(largeValueString);
     });
+
+    it('should preserve integer type for values between uint32 max and MAX_SAFE_INTEGER', () => {
+      // This is the specific issue from the bug report:
+      // Values like 57602261053 (between uint32 max 4294967295 and MAX_SAFE_INTEGER 9007199254740991)
+      // should be encoded as uint64, not float64
+      const value = '57602261053';
+      const json = `{"value": ${value}}`;
+
+      const msgpack = jsonToMsgpack(json);
+
+      // Should NOT have float64 marker
+      expect(hasMsgpackMarker(msgpack, MSGPACK_FLOAT64)).toBe(false);
+
+      // Should have uint64 marker
+      expect(hasMsgpackMarker(msgpack, MSGPACK_UINT64)).toBe(true);
+
+      // Verify roundtrip preserves the value
+      const backToJson = msgpackToJson(msgpack);
+      expect(backToJson).toContain(value);
+    });
+
+    it('should preserve integer type in msgpack -> JSON -> msgpack roundtrip', () => {
+      // Create a msgpack with uint64 value directly, then verify roundtrip preserves it
+      // First, create msgpack from JSON with the problematic value
+      const originalJson = '{"value": 57602261053}';
+      const msgpack1 = jsonToMsgpack(originalJson);
+
+      // Convert to JSON and back to msgpack
+      const json = msgpackToJson(msgpack1);
+      const msgpack2 = jsonToMsgpack(json);
+
+      // Both msgpack outputs should be identical
+      expect(msgpack2).toBe(msgpack1);
+    });
   });
 
   describe('validation functions', () => {
@@ -198,17 +252,7 @@ describe('converter utilities', () => {
       const msgpack = jsonToMsgpack(json);
       
       // uint64 uses 0xcf marker
-      const decoded = atob(msgpack);
-      
-      // Find 0xcf marker in the msgpack data
-      let found = false;
-      for (let i = 0; i < decoded.length; i++) {
-        if (decoded.charCodeAt(i) === 0xcf) {
-          found = true;
-          break;
-        }
-      }
-      expect(found).toBe(true);
+      expect(hasMsgpackMarker(msgpack, MSGPACK_UINT64)).toBe(true);
       
       // Verify roundtrip preserves the large value
       const backToJson = msgpackToJson(msgpack);
