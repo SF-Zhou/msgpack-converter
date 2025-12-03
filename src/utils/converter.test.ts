@@ -1,6 +1,26 @@
 import { describe, it, expect } from 'vitest';
 import { msgpackToJson, jsonToMsgpack, isValidBase64, isValidJson } from './converter';
 
+/**
+ * Helper function to check if a msgpack marker byte is present in the encoded data
+ * @param base64Msgpack - The base64-encoded msgpack data
+ * @param marker - The msgpack format marker byte to search for
+ * @returns true if the marker is found in the data
+ */
+function hasMsgpackMarker(base64Msgpack: string, marker: number): boolean {
+  const decoded = atob(base64Msgpack);
+  for (let i = 0; i < decoded.length; i++) {
+    if (decoded.charCodeAt(i) === marker) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// Msgpack format markers
+const MSGPACK_FLOAT64 = 0xcb;
+const MSGPACK_UINT64 = 0xcf;
+
 describe('converter utilities', () => {
   describe('msgpackToJson', () => {
     it('should convert simple msgpack to JSON', () => {
@@ -121,28 +141,11 @@ describe('converter utilities', () => {
 
       const msgpack = jsonToMsgpack(json);
 
-      // Decode the base64 msgpack to check the encoding
-      const decoded = atob(msgpack);
+      // Should NOT have float64 marker
+      expect(hasMsgpackMarker(msgpack, MSGPACK_FLOAT64)).toBe(false);
 
-      // Should NOT have float64 marker (0xcb)
-      let hasFloat64 = false;
-      for (let i = 0; i < decoded.length; i++) {
-        if (decoded.charCodeAt(i) === 0xcb) {
-          hasFloat64 = true;
-          break;
-        }
-      }
-      expect(hasFloat64).toBe(false);
-
-      // Should have uint64 marker (0xcf)
-      let hasUint64 = false;
-      for (let i = 0; i < decoded.length; i++) {
-        if (decoded.charCodeAt(i) === 0xcf) {
-          hasUint64 = true;
-          break;
-        }
-      }
-      expect(hasUint64).toBe(true);
+      // Should have uint64 marker
+      expect(hasMsgpackMarker(msgpack, MSGPACK_UINT64)).toBe(true);
 
       // Verify roundtrip preserves the value
       const backToJson = msgpackToJson(msgpack);
@@ -249,17 +252,7 @@ describe('converter utilities', () => {
       const msgpack = jsonToMsgpack(json);
       
       // uint64 uses 0xcf marker
-      const decoded = atob(msgpack);
-      
-      // Find 0xcf marker in the msgpack data
-      let found = false;
-      for (let i = 0; i < decoded.length; i++) {
-        if (decoded.charCodeAt(i) === 0xcf) {
-          found = true;
-          break;
-        }
-      }
-      expect(found).toBe(true);
+      expect(hasMsgpackMarker(msgpack, MSGPACK_UINT64)).toBe(true);
       
       // Verify roundtrip preserves the large value
       const backToJson = msgpackToJson(msgpack);
