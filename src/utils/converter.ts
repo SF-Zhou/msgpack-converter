@@ -2,6 +2,9 @@ import { encode, decode, ExtensionCodec } from '@msgpack/msgpack';
 import JSONBig from 'json-bigint';
 
 // Create a custom JSON parser that uses BigInt for large integers
+// alwaysParseAsBig: true ensures all integers are parsed as BigInt to preserve
+// uint64 values without precision loss. This is intentional for the converter
+// use case where data integrity is more important than performance.
 const JSONBigNative = JSONBig({ useNativeBigInt: true, alwaysParseAsBig: true });
 
 // Extension codec to handle BigInt in msgpack

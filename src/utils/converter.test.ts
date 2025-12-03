@@ -96,18 +96,17 @@ describe('converter utilities', () => {
 
     it('should demonstrate that default JSON would lose precision', () => {
       // This test documents the issue with default JSON and large numbers
-      const largeValue = 9007199254740993n;
       const largeValueString = '9007199254740993';
       
       // Standard JSON.parse loses precision for large integers
       // 9007199254740993 becomes 9007199254740992 after parsing as float64
-      const standardParsed = JSON.parse(`{"value": ${largeValue}}`);
+      const standardParsed = JSON.parse(`{"value": ${largeValueString}}`);
       // Show that the standard parser corrupts the value - it's converted to 9007199254740992
       expect(standardParsed.value.toString()).toBe('9007199254740992'); // Wrong! Lost precision
       expect(standardParsed.value.toString()).not.toBe(largeValueString); // It's not the original
       
       // Our converter preserves the value
-      const json = `{"value": ${largeValue}}`;
+      const json = `{"value": ${largeValueString}}`;
       const msgpack = jsonToMsgpack(json);
       const backToJson = msgpackToJson(msgpack);
       expect(backToJson).toContain(largeValueString);
