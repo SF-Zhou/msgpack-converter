@@ -2,13 +2,33 @@ import { encode, decode, ExtensionCodec } from '@msgpack/msgpack';
 import JSONBig from 'json-bigint';
 
 // Create a custom JSON parser that uses BigInt for large integers
-// alwaysParseAsBig: true ensures all integers are parsed as BigInt to preserve
-// uint64 values without precision loss. This is intentional for the converter
-// use case where data integrity is more important than performance.
-const JSONBigNative = JSONBig({ useNativeBigInt: true, alwaysParseAsBig: true });
+// useNativeBigInt: true uses native BigInt for values exceeding safe integer limits
+// Without alwaysParseAsBig, small integers remain as regular numbers, allowing
+// msgpack to use compact encodings (fixint, uint8, etc.) instead of uint64
+const JSONBigNative = JSONBig({ useNativeBigInt: true });
 
 // Extension codec to handle BigInt in msgpack
 const extensionCodec = new ExtensionCodec();
+
+/**
+ * Extract error message from various error types
+ * Handles Error instances, json-bigint error objects, and unknown types
+ */
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  // json-bigint throws objects with name, message, at, and text properties
+  if (
+    error !== null &&
+    typeof error === 'object' &&
+    'message' in error &&
+    typeof (error as { message: unknown }).message === 'string'
+  ) {
+    return (error as { message: string }).message;
+  }
+  return 'Unknown error';
+}
 
 /**
  * Convert Base64-encoded msgpack data to pretty JSON string
@@ -29,10 +49,8 @@ export function msgpackToJson(base64String: string): string {
     // Convert to pretty JSON with BigInt support
     return JSONBigNative.stringify(data, null, 2);
   } catch (error) {
-    if (error instanceof Error) {
-      throw new Error(`Failed to convert msgpack to JSON: ${error.message}`);
-    }
-    throw new Error('Failed to convert msgpack to JSON: Unknown error');
+    const message = getErrorMessage(error);
+    throw new Error(`Failed to convert msgpack to JSON: ${message}`);
   }
 }
 
@@ -54,10 +72,8 @@ export function jsonToMsgpack(jsonString: string): string {
       .join('');
     return btoa(binaryString);
   } catch (error) {
-    if (error instanceof Error) {
-      throw new Error(`Failed to convert JSON to msgpack: ${error.message}`);
-    }
-    throw new Error('Failed to convert JSON to msgpack: Unknown error');
+    const message = getErrorMessage(error);
+    throw new Error(`Failed to convert JSON to msgpack: ${message}`);
   }
 }
 

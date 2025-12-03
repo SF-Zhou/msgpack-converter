@@ -139,4 +139,110 @@ describe('converter utilities', () => {
       });
     });
   });
+
+  describe('compact integer encoding', () => {
+    it('should use compact encoding for small positive integers', () => {
+      // Test that small integers produce compact msgpack output
+      // In msgpack, positive fixint (0-127) is encoded as a single byte
+      const json = '{"value": 1}';
+      const msgpack = jsonToMsgpack(json);
+      
+      // The base64-encoded msgpack for {"value": 1} with fixint should be shorter
+      // than with uint64 encoding (which adds 8 bytes)
+      // fixint encoding: 81 a5 76 61 6c 75 65 01 (8 bytes)
+      // uint64 encoding: 81 a5 76 61 6c 75 65 cf 00 00 00 00 00 00 00 01 (16 bytes)
+      const decoded = atob(msgpack);
+      
+      // The last byte should be 0x01 (fixint for 1), not 0xcf (uint64 marker)
+      expect(decoded.charCodeAt(decoded.length - 1)).toBe(1);
+      
+      // Verify roundtrip
+      const backToJson = msgpackToJson(msgpack);
+      expect(JSON.parse(backToJson)).toEqual({ value: 1 });
+    });
+
+    it('should use compact encoding for array of small integers', () => {
+      const json = '[1, 2, 3, 127]';
+      const msgpack = jsonToMsgpack(json);
+      
+      // [1, 2, 3, 127] with fixint: 94 01 02 03 7f (5 bytes)
+      const decoded = atob(msgpack);
+      
+      // Verify compact encoding: array should be 5 bytes
+      expect(decoded.length).toBe(5);
+      
+      // Verify roundtrip
+      const backToJson = msgpackToJson(msgpack);
+      expect(JSON.parse(backToJson)).toEqual([1, 2, 3, 127]);
+    });
+
+    it('should use uint8 encoding for values 128-255', () => {
+      const json = '{"value": 255}';
+      const msgpack = jsonToMsgpack(json);
+      
+      // uint8 uses 0xcc marker followed by 1 byte value
+      const decoded = atob(msgpack);
+      
+      // Verify the value byte is 0xff (255)
+      expect(decoded.charCodeAt(decoded.length - 1)).toBe(255);
+      // And the marker before it should be 0xcc (uint8)
+      expect(decoded.charCodeAt(decoded.length - 2)).toBe(0xcc);
+      
+      const backToJson = msgpackToJson(msgpack);
+      expect(JSON.parse(backToJson)).toEqual({ value: 255 });
+    });
+
+    it('should still use uint64 for large integers', () => {
+      const largeValue = '18446744073709551615';
+      const json = `{"value": ${largeValue}}`;
+      const msgpack = jsonToMsgpack(json);
+      
+      // uint64 uses 0xcf marker
+      const decoded = atob(msgpack);
+      
+      // Find 0xcf marker in the msgpack data
+      let found = false;
+      for (let i = 0; i < decoded.length; i++) {
+        if (decoded.charCodeAt(i) === 0xcf) {
+          found = true;
+          break;
+        }
+      }
+      expect(found).toBe(true);
+      
+      // Verify roundtrip preserves the large value
+      const backToJson = msgpackToJson(msgpack);
+      expect(backToJson).toContain(largeValue);
+    });
+  });
+
+  describe('error messages', () => {
+    it('should provide descriptive error for invalid JSON syntax', () => {
+      // The error message varies based on json-bigint parsing, but should contain something descriptive
+      expect(() => jsonToMsgpack('not valid json')).toThrow(
+        /Failed to convert JSON to msgpack:/
+      );
+      
+      // Verify it contains a descriptive error, not "Unknown error"
+      expect(() => jsonToMsgpack('not valid json')).toThrow(/Expected/);
+      expect(() => jsonToMsgpack('not valid json')).not.toThrow(/Unknown error/);
+    });
+
+    it('should provide descriptive error for missing quotes', () => {
+      expect(() => jsonToMsgpack('{missing: quotes}')).toThrow(
+        /Failed to convert JSON to msgpack:/
+      );
+    });
+
+    it('should provide descriptive error for unclosed brackets', () => {
+      expect(() => jsonToMsgpack('{"key": "value"')).toThrow(
+        /Failed to convert JSON to msgpack:/
+      );
+    });
+
+    it('should not show Unknown error for json-bigint parse errors', () => {
+      expect(() => jsonToMsgpack('invalid')).toThrow(/Failed to convert JSON to msgpack:/);
+      expect(() => jsonToMsgpack('invalid')).not.toThrow(/Unknown error/);
+    });
+  });
 });
