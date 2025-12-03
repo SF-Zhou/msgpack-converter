@@ -111,6 +111,57 @@ describe('converter utilities', () => {
       const backToJson = msgpackToJson(msgpack);
       expect(backToJson).toContain(largeValueString);
     });
+
+    it('should preserve integer type for values between uint32 max and MAX_SAFE_INTEGER', () => {
+      // This is the specific issue from the bug report:
+      // Values like 57602261053 (between uint32 max 4294967295 and MAX_SAFE_INTEGER 9007199254740991)
+      // should be encoded as uint64, not float64
+      const value = '57602261053';
+      const json = `{"value": ${value}}`;
+
+      const msgpack = jsonToMsgpack(json);
+
+      // Decode the base64 msgpack to check the encoding
+      const decoded = atob(msgpack);
+
+      // Should NOT have float64 marker (0xcb)
+      let hasFloat64 = false;
+      for (let i = 0; i < decoded.length; i++) {
+        if (decoded.charCodeAt(i) === 0xcb) {
+          hasFloat64 = true;
+          break;
+        }
+      }
+      expect(hasFloat64).toBe(false);
+
+      // Should have uint64 marker (0xcf)
+      let hasUint64 = false;
+      for (let i = 0; i < decoded.length; i++) {
+        if (decoded.charCodeAt(i) === 0xcf) {
+          hasUint64 = true;
+          break;
+        }
+      }
+      expect(hasUint64).toBe(true);
+
+      // Verify roundtrip preserves the value
+      const backToJson = msgpackToJson(msgpack);
+      expect(backToJson).toContain(value);
+    });
+
+    it('should preserve integer type in msgpack -> JSON -> msgpack roundtrip', () => {
+      // Create a msgpack with uint64 value directly, then verify roundtrip preserves it
+      // First, create msgpack from JSON with the problematic value
+      const originalJson = '{"value": 57602261053}';
+      const msgpack1 = jsonToMsgpack(originalJson);
+
+      // Convert to JSON and back to msgpack
+      const json = msgpackToJson(msgpack1);
+      const msgpack2 = jsonToMsgpack(json);
+
+      // Both msgpack outputs should be identical
+      expect(msgpack2).toBe(msgpack1);
+    });
   });
 
   describe('validation functions', () => {

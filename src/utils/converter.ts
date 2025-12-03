@@ -10,6 +10,47 @@ const JSONBigNative = JSONBig({ useNativeBigInt: true });
 // Extension codec to handle BigInt in msgpack
 const extensionCodec = new ExtensionCodec();
 
+// Maximum value that can be encoded as uint32 in msgpack
+const UINT32_MAX = 0xffffffff;
+// Minimum value that can be encoded as int32 in msgpack
+const INT32_MIN = -2147483648;
+
+/**
+ * Recursively transform integers that exceed 32-bit range to BigInt.
+ * This ensures they are encoded as int64/uint64 in msgpack instead of float64.
+ * Small integers remain as Numbers for compact msgpack encoding.
+ */
+function transformLargeIntegers(value: unknown): unknown {
+  if (value === null || value === undefined) {
+    return value;
+  }
+
+  // Convert Numbers that exceed 32-bit integer range to BigInt
+  if (typeof value === 'number' && Number.isInteger(value)) {
+    if (value > UINT32_MAX || value < INT32_MIN) {
+      return BigInt(value);
+    }
+    return value;
+  }
+
+  // Recursively process arrays
+  if (Array.isArray(value)) {
+    return value.map(transformLargeIntegers);
+  }
+
+  // Recursively process objects
+  if (typeof value === 'object') {
+    const result: Record<string, unknown> = {};
+    for (const [key, val] of Object.entries(value)) {
+      result[key] = transformLargeIntegers(val);
+    }
+    return result;
+  }
+
+  // Return other types as-is (strings, booleans, BigInt, etc.)
+  return value;
+}
+
 /**
  * Extract error message from various error types
  * Handles Error instances, json-bigint error objects, and unknown types
@@ -61,7 +102,11 @@ export function msgpackToJson(base64String: string): string {
 export function jsonToMsgpack(jsonString: string): string {
   try {
     // Parse JSON with BigInt support
-    const data = JSONBigNative.parse(jsonString);
+    const parsed = JSONBigNative.parse(jsonString);
+
+    // Transform integers exceeding 32-bit range to BigInt to ensure they are
+    // encoded as int64/uint64 in msgpack instead of float64
+    const data = transformLargeIntegers(parsed);
 
     // Encode to msgpack
     const encoded = encode(data, { extensionCodec, useBigInt64: true });
