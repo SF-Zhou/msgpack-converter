@@ -1,43 +1,50 @@
 import { useRef, useEffect, useState, useMemo, useCallback } from 'react';
-import Prism from 'prismjs';
-import 'prismjs/components/prism-json';
-import './JsonHighlighter.css';
+import './HexHighlighter.css';
 
-interface JsonHighlighterProps {
+interface HexHighlighterProps {
   value: string;
   onChange: (value: string) => void;
   placeholder?: string;
   id?: string;
-  onSelectionChange?: (selStart: number, selEnd: number) => void;
+  highlightRange?: { charStart: number; charEnd: number } | null;
 }
 
-export function JsonHighlighter({
+export function HexHighlighter({
   value,
   onChange,
   placeholder,
   id,
-  onSelectionChange,
-}: JsonHighlighterProps) {
+  highlightRange,
+}: HexHighlighterProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const highlightRef = useRef<HTMLPreElement>(null);
   const [scrollTop, setScrollTop] = useState(0);
   const [scrollLeft, setScrollLeft] = useState(0);
 
-  // Use PrismJS for syntax highlighting
+  // Create highlighted HTML
   const highlightedHtml = useMemo(() => {
     if (!value) return '';
-    try {
-      return Prism.highlight(value, Prism.languages.json, 'json');
-    } catch {
-      // If highlighting fails, return properly escaped text
-      return value
+
+    // Escape HTML special characters
+    const escapeHtml = (str: string) =>
+      str
         .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#039;');
+
+    if (!highlightRange) {
+      return escapeHtml(value);
     }
-  }, [value]);
+
+    const { charStart, charEnd } = highlightRange;
+    const before = escapeHtml(value.slice(0, charStart));
+    const highlighted = escapeHtml(value.slice(charStart, charEnd));
+    const after = escapeHtml(value.slice(charEnd));
+
+    return `${before}<span class="hex-highlight">${highlighted}</span>${after}`;
+  }, [value, highlightRange]);
 
   // Sync scroll between textarea and highlight overlay
   const handleScroll = useCallback(() => {
@@ -47,14 +54,6 @@ export function JsonHighlighter({
     }
   }, []);
 
-  // Handle selection changes
-  const handleSelect = useCallback(() => {
-    if (textareaRef.current && onSelectionChange) {
-      const { selectionStart, selectionEnd } = textareaRef.current;
-      onSelectionChange(selectionStart, selectionEnd);
-    }
-  }, [onSelectionChange]);
-
   useEffect(() => {
     if (highlightRef.current) {
       highlightRef.current.scrollTop = scrollTop;
@@ -63,23 +62,17 @@ export function JsonHighlighter({
   }, [scrollTop, scrollLeft]);
 
   return (
-    <div className="json-highlighter-container">
-      <pre ref={highlightRef} className="json-highlight-overlay" aria-hidden="true">
-        <code
-          className="language-json"
-          dangerouslySetInnerHTML={{ __html: highlightedHtml + (value.endsWith('\n') ? ' ' : '') }}
-        />
+    <div className="hex-highlighter-container">
+      <pre ref={highlightRef} className="hex-highlight-overlay" aria-hidden="true">
+        <code dangerouslySetInnerHTML={{ __html: highlightedHtml + (value.endsWith('\n') ? ' ' : '') }} />
       </pre>
       <textarea
         ref={textareaRef}
         id={id}
-        className="json-textarea"
+        className="hex-textarea input-area msgpack-textarea"
         value={value}
         onChange={(e) => onChange(e.target.value)}
         onScroll={handleScroll}
-        onSelect={handleSelect}
-        onMouseUp={handleSelect}
-        onKeyUp={handleSelect}
         placeholder={placeholder}
         spellCheck={false}
       />

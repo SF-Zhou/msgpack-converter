@@ -1,6 +1,13 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { msgpackToJson, jsonToMsgpack, base64ToHex, hexToBase64 } from './utils/converter';
 import { JsonHighlighter } from './components/JsonHighlighter';
+import { HexHighlighter } from './components/HexHighlighter';
+import {
+  createPositionMappings,
+  findHexRangeForJsonSelection,
+  byteRangeToHexCharRange,
+  type PositionMapping,
+} from './utils/position-mapper';
 import './App.css';
 
 function App() {
@@ -8,6 +15,25 @@ function App() {
   const [msgpackHex, setMsgpackHex] = useState('');
   const [jsonInput, setJsonInput] = useState('');
   const [error, setError] = useState('');
+  const [hexHighlightRange, setHexHighlightRange] = useState<{
+    charStart: number;
+    charEnd: number;
+  } | null>(null);
+
+  // Memoize the position mappings between msgpack and JSON
+  const positionMappings = useMemo<PositionMapping[]>(() => {
+    if (!msgpackBase64 || !jsonInput) return [];
+    try {
+      const binaryString = atob(msgpackBase64.trim());
+      const bytes = new Uint8Array(binaryString.length);
+      for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+      return createPositionMappings(bytes, jsonInput);
+    } catch {
+      return [];
+    }
+  }, [msgpackBase64, jsonInput]);
 
   // Handle base64 input change - update hex in real-time
   const handleBase64Change = useCallback((value: string) => {
@@ -73,7 +99,27 @@ function App() {
     setMsgpackHex('');
     setJsonInput('');
     setError('');
+    setHexHighlightRange(null);
   };
+
+  // Handle JSON selection changes to highlight corresponding hex bytes
+  const handleJsonSelectionChange = useCallback(
+    (selStart: number, selEnd: number) => {
+      if (positionMappings.length === 0 || selStart === selEnd) {
+        setHexHighlightRange(null);
+        return;
+      }
+
+      const byteRange = findHexRangeForJsonSelection(positionMappings, selStart, selEnd);
+      if (byteRange) {
+        const charRange = byteRangeToHexCharRange(byteRange.hexStart, byteRange.hexEnd);
+        setHexHighlightRange(charRange);
+      } else {
+        setHexHighlightRange(null);
+      }
+    },
+    [positionMappings]
+  );
 
   return (
     <div className="app">
@@ -112,12 +158,12 @@ function App() {
                 <span className="label-icon">🔢</span>
                 Hex (Space-separated)
               </label>
-              <textarea
+              <HexHighlighter
                 id="msgpack-hex-input"
-                className="input-area msgpack-textarea"
-                placeholder="Or paste hex bytes here (e.g., 81 A5 68 65 6C 6C 6F)..."
                 value={msgpackHex}
-                onChange={(e) => handleHexChange(e.target.value)}
+                onChange={handleHexChange}
+                placeholder="Or paste hex bytes here (e.g., 81 A5 68 65 6C 6C 6F)..."
+                highlightRange={hexHighlightRange}
               />
             </div>
           </div>
@@ -157,6 +203,7 @@ function App() {
             value={jsonInput}
             onChange={setJsonInput}
             placeholder="Paste JSON data here..."
+            onSelectionChange={handleJsonSelectionChange}
           />
         </div>
       </main>
