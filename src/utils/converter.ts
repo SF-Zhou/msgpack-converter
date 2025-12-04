@@ -1,5 +1,6 @@
 import { encode, decode, ExtensionCodec } from '@msgpack/msgpack';
 import JSONBig from 'json-bigint';
+import { parse as losslessParse, isLosslessNumber, LosslessNumber } from 'lossless-json';
 
 // Create a custom JSON parser that uses BigInt for large integers
 // useNativeBigInt: true uses native BigInt for values exceeding safe integer limits
@@ -38,60 +39,63 @@ class DecodedFloat64 {
 }
 
 /**
+ * Check if a LosslessNumber represents a float (has decimal point or exponent).
+ */
+function isFloatNumber(losslessNum: LosslessNumber): boolean {
+  const value = losslessNum.value;
+  return value.includes('.') || value.toLowerCase().includes('e');
+}
+
+/**
  * Parse JSON and wrap float values (numbers with decimal point or exponent) in Float64.
- * This preserves the original representation for msgpack encoding.
+ * Uses lossless-json to properly parse numbers and preserve their original representation.
  */
 function parseJsonWithFloats(jsonString: string): unknown {
-  // Pattern for numbers with decimal point or exponent
-  // Lookbehind ensures we're after a JSON delimiter (not in a string) OR at start of string
-  // Using a character set that includes [ { : , whitespace, and ^ for start of string
-  const floatPattern =
-    /(?<=^|[{[:,\s])(-?(?:0|[1-9]\d*)(?:\.\d+)(?:[eE][+-]?\d+)?|-?(?:0|[1-9]\d*)(?:[eE][+-]?\d+))(?=[}\],\s]|$)/g;
+  // Use lossless-json to parse, which preserves the original string representation of numbers
+  const parsed = losslessParse(jsonString);
 
-  // Check if there are any float patterns
-  if (!floatPattern.test(jsonString)) {
-    return JSONBigNative.parse(jsonString);
-  }
-
-  // Reset regex state
-  floatPattern.lastIndex = 0;
-
-  // Build a modified JSON where floats are wrapped in special objects
-  const floatMarker = '__MSGPACK_FLOAT64__';
-  let modifiedJson = '';
-  let lastIndex = 0;
-
-  let matchResult;
-  while ((matchResult = floatPattern.exec(jsonString)) !== null) {
-    modifiedJson += jsonString.slice(lastIndex, matchResult.index);
-    modifiedJson += `{"${floatMarker}":${matchResult[0]}}`;
-    lastIndex = matchResult.index + matchResult[0].length;
-  }
-  modifiedJson += jsonString.slice(lastIndex);
-
-  // Parse the modified JSON
-  const parsed = JSONBigNative.parse(modifiedJson);
-
-  // Post-process to unwrap floats
-  function unwrapFloats(value: unknown): unknown {
+  // Post-process to convert LosslessNumbers to appropriate types
+  function processValue(value: unknown): unknown {
     if (value === null || value === undefined) {
       return value;
     }
 
+    // Check if it's a LosslessNumber
+    if (isLosslessNumber(value)) {
+      const losslessNum = value as LosslessNumber;
+      const numValue = Number(losslessNum.value);
+
+      // If it's a float (has decimal point or exponent), wrap in Float64
+      if (isFloatNumber(losslessNum)) {
+        return new Float64(numValue);
+      }
+
+      // For integers, check if they exceed safe integer limits
+      // If so, convert to BigInt for proper int64/uint64 encoding
+      if (
+        !Number.isSafeInteger(numValue) &&
+        !losslessNum.value.includes('.') &&
+        !losslessNum.value.toLowerCase().includes('e')
+      ) {
+        try {
+          return BigInt(losslessNum.value);
+        } catch {
+          // If BigInt conversion fails, return as number
+          return numValue;
+        }
+      }
+
+      return numValue;
+    }
+
     if (Array.isArray(value)) {
-      return value.map(unwrapFloats);
+      return value.map(processValue);
     }
 
     if (typeof value === 'object') {
-      const obj = value as Record<string, unknown>;
-      // Check if this is a float marker object
-      if (floatMarker in obj && Object.keys(obj).length === 1) {
-        return new Float64(Number(obj[floatMarker]));
-      }
-      // Recursively process object properties
       const result: Record<string, unknown> = {};
-      for (const [key, val] of Object.entries(obj)) {
-        result[key] = unwrapFloats(val);
+      for (const [key, val] of Object.entries(value as Record<string, unknown>)) {
+        result[key] = processValue(val);
       }
       return result;
     }
@@ -99,7 +103,7 @@ function parseJsonWithFloats(jsonString: string): unknown {
     return value;
   }
 
-  return unwrapFloats(parsed);
+  return processValue(parsed);
 }
 
 /**

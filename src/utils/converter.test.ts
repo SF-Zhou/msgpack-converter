@@ -339,7 +339,8 @@ describe('converter utilities', () => {
       );
       
       // Verify it contains a descriptive error, not "Unknown error"
-      expect(() => jsonToMsgpack('not valid json')).toThrow(/Expected/);
+      // lossless-json uses "JSON value expected" format
+      expect(() => jsonToMsgpack('not valid json')).toThrow(/JSON value expected|Expected/);
       expect(() => jsonToMsgpack('not valid json')).not.toThrow(/Unknown error/);
     });
 
