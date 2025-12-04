@@ -1,0 +1,136 @@
+.json-highlighter-container {
+  position: relative;
+  flex: 1;
+  min-height: 300px;
+  display: flex;
+}
+
+.json-highlight-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  margin: 0;
+  padding: 1rem;
+  border: 2px solid transparent;
+  border-radius: 12px;
+  font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  pointer-events: none;
+  background: transparent;
+}
+
+.json-highlight-overlay code {
+  font-family: inherit;
+  font-size: inherit;
+}
+
+.json-textarea {
+  flex: 1;
+  min-height: 300px;
+  padding: 1rem;
+  border: 2px solid #e0e0e0;
+  border-radius: 12px;
+  font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  resize: vertical;
+  transition: border-color 0.3s ease, box-shadow 0.3s ease;
+  background-color: transparent;
+  color: transparent;
+  caret-color: #333;
+  z-index: 1;
+  width: 100%;
+}
+
+.json-textarea:focus {
+  outline: none;
+  border-color: #667eea;
+  box-shadow: 0 0 0 4px rgba(102, 126, 234, 0.1);
+}
+
+.json-textarea::placeholder {
+  color: #aaa;
+}
+
+/* Dark mode styles */
+@media (prefers-color-scheme: dark) {
+  .json-textarea {
+    border-color: #444;
+    caret-color: #eee;
+  }
+
+  .json-textarea:focus {
+    border-color: #667eea;
+    box-shadow: 0 0 0 4px rgba(102, 126, 234, 0.2);
+  }
+
+  .json-textarea::placeholder {
+    color: #666;
+  }
+}
+
+/* PrismJS Token Colors - Light mode */
+.token.string {
+  color: #22863a;
+}
+
+.token.number {
+  color: #005cc5;
+}
+
+.token.boolean {
+  color: #d73a49;
+}
+
+.token.null {
+  color: #6f42c1;
+}
+
+.token.punctuation {
+  color: #24292e;
+}
+
+.token.property {
+  color: #005cc5;
+}
+
+.token.operator {
+  color: #24292e;
+}
+
+/* PrismJS Token Colors - Dark mode */
+@media (prefers-color-scheme: dark) {
+  .token.string {
+    color: #85e89d;
+  }
+
+  .token.number {
+    color: #79b8ff;
+  }
+
+  .token.boolean {
+    color: #f97583;
+  }
+
+  .token.null {
+    color: #b392f0;
+  }
+
+  .token.punctuation {
+    color: #e1e4e8;
+  }
+
+  .token.property {
+    color: #79b8ff;
+  }
+
+  .token.operator {
+    color: #e1e4e8;
+  }
+}

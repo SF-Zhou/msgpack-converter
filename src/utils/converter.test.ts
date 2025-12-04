@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { msgpackToJson, jsonToMsgpack, isValidBase64, isValidJson } from './converter';
+import { msgpackToJson, jsonToMsgpack, isValidBase64, isValidJson, base64ToHex, hexToBase64, isValidHex } from './converter';
 
 /**
  * Helper function to check if a msgpack marker byte is present in the encoded data
@@ -287,6 +287,102 @@ describe('converter utilities', () => {
     it('should not show Unknown error for json-bigint parse errors', () => {
       expect(() => jsonToMsgpack('invalid')).toThrow(/Failed to convert JSON to msgpack:/);
       expect(() => jsonToMsgpack('invalid')).not.toThrow(/Unknown error/);
+    });
+  });
+
+  describe('base64ToHex', () => {
+    it('should convert base64 to hex with space-separated bytes', () => {
+      // "hello" in base64 is "aGVsbG8="
+      const hex = base64ToHex('aGVsbG8=');
+      expect(hex).toBe('68 65 6C 6C 6F');
+    });
+
+    it('should convert msgpack base64 to hex correctly', () => {
+      // {"hello": "world"} in msgpack
+      const hex = base64ToHex('gaVoZWxsb6V3b3JsZA==');
+      expect(hex).toBe('81 A5 68 65 6C 6C 6F A5 77 6F 72 6C 64');
+    });
+
+    it('should handle empty input', () => {
+      const hex = base64ToHex('');
+      expect(hex).toBe('');
+    });
+
+    it('should throw error for invalid base64', () => {
+      expect(() => base64ToHex('invalid!')).toThrow('Invalid Base64 string');
+    });
+  });
+
+  describe('hexToBase64', () => {
+    it('should convert space-separated hex to base64', () => {
+      const base64 = hexToBase64('68 65 6C 6C 6F');
+      expect(base64).toBe('aGVsbG8=');
+    });
+
+    it('should convert msgpack hex to base64 correctly', () => {
+      const base64 = hexToBase64('81 A5 68 65 6C 6C 6F A5 77 6F 72 6C 64');
+      expect(base64).toBe('gaVoZWxsb6V3b3JsZA==');
+    });
+
+    it('should handle continuous hex without spaces', () => {
+      const base64 = hexToBase64('68656C6C6F');
+      expect(base64).toBe('aGVsbG8=');
+    });
+
+    it('should handle lowercase hex', () => {
+      const base64 = hexToBase64('68 65 6c 6c 6f');
+      expect(base64).toBe('aGVsbG8=');
+    });
+
+    it('should handle empty input', () => {
+      const base64 = hexToBase64('');
+      expect(base64).toBe('');
+    });
+
+    it('should throw error for odd number of hex characters', () => {
+      expect(() => hexToBase64('68 65 6C 6C 6')).toThrow('Hex string must have an even number of characters');
+    });
+
+    it('should throw error for invalid hex characters', () => {
+      expect(() => hexToBase64('68 GG 6C')).toThrow('Invalid hex characters');
+    });
+  });
+
+  describe('isValidHex', () => {
+    it('should return true for valid hex with spaces', () => {
+      expect(isValidHex('68 65 6C 6C 6F')).toBe(true);
+    });
+
+    it('should return true for valid hex without spaces', () => {
+      expect(isValidHex('68656C6C6F')).toBe(true);
+    });
+
+    it('should return true for empty string', () => {
+      expect(isValidHex('')).toBe(true);
+    });
+
+    it('should return false for odd number of characters', () => {
+      expect(isValidHex('68 65 6')).toBe(false);
+    });
+
+    it('should return false for invalid hex characters', () => {
+      expect(isValidHex('68 GG 6C')).toBe(false);
+    });
+  });
+
+  describe('base64 and hex roundtrip', () => {
+    it('should roundtrip base64 -> hex -> base64', () => {
+      const original = 'gaVoZWxsb6V3b3JsZA==';
+      const hex = base64ToHex(original);
+      const result = hexToBase64(hex);
+      expect(result).toBe(original);
+    });
+
+    it('should roundtrip hex -> base64 -> hex', () => {
+      const original = '81 A5 68 65 6C 6C 6F A5 77 6F 72 6C 64';
+      const base64 = hexToBase64(original);
+      const result = base64ToHex(base64);
+      expect(result).toBe(original);
     });
   });
 });

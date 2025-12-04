@@ -76,6 +76,23 @@
   min-height: 400px;
 }
 
+.msgpack-inputs {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  flex: 1;
+}
+
+.msgpack-input-group {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+
+.msgpack-textarea {
+  min-height: 140px;
+}
+
 .input-label {
   display: flex;
   align-items: center;
