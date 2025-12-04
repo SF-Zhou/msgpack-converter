@@ -145,3 +145,62 @@ export function isValidJson(str: string): boolean {
     return false;
   }
 }
+
+/**
+ * Convert Base64 string to hex string with space-separated bytes
+ */
+export function base64ToHex(base64String: string): string {
+  try {
+    const binaryString = atob(base64String);
+    const hexBytes: string[] = [];
+    for (let i = 0; i < binaryString.length; i++) {
+      const byte = binaryString.charCodeAt(i);
+      hexBytes.push(byte.toString(16).padStart(2, '0').toUpperCase());
+    }
+    return hexBytes.join(' ');
+  } catch {
+    throw new Error('Invalid Base64 string');
+  }
+}
+
+/**
+ * Convert hex string (space-separated or continuous) to Base64 string
+ */
+export function hexToBase64(hexString: string): string {
+  // Remove all whitespace and normalize
+  const cleanHex = hexString.replace(/\s+/g, '');
+  
+  if (cleanHex.length === 0) {
+    return '';
+  }
+  
+  if (cleanHex.length % 2 !== 0) {
+    throw new Error('Hex string must have an even number of characters');
+  }
+  
+  if (!/^[0-9a-fA-F]*$/.test(cleanHex)) {
+    throw new Error('Invalid hex characters');
+  }
+  
+  let binaryString = '';
+  for (let i = 0; i < cleanHex.length; i += 2) {
+    const byte = parseInt(cleanHex.substr(i, 2), 16);
+    binaryString += String.fromCharCode(byte);
+  }
+  
+  return btoa(binaryString);
+}
+
+/**
+ * Validate if a string is valid hex format
+ */
+export function isValidHex(str: string): boolean {
+  const cleanHex = str.replace(/\s+/g, '');
+  if (cleanHex.length === 0) {
+    return true; // Empty is valid
+  }
+  if (cleanHex.length % 2 !== 0) {
+    return false;
+  }
+  return /^[0-9a-fA-F]*$/.test(cleanHex);
+}

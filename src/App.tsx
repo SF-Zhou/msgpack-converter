@@ -1,16 +1,50 @@
-import { useState } from 'react';
-import { msgpackToJson, jsonToMsgpack } from './utils/converter';
+import { useState, useCallback } from 'react';
+import { msgpackToJson, jsonToMsgpack, base64ToHex, hexToBase64 } from './utils/converter';
+import { JsonHighlighter } from './components/JsonHighlighter';
 import './App.css';
 
 function App() {
-  const [msgpackInput, setMsgpackInput] = useState('');
+  const [msgpackBase64, setMsgpackBase64] = useState('');
+  const [msgpackHex, setMsgpackHex] = useState('');
   const [jsonInput, setJsonInput] = useState('');
   const [error, setError] = useState('');
+
+  // Handle base64 input change - update hex in real-time
+  const handleBase64Change = useCallback((value: string) => {
+    setMsgpackBase64(value);
+    if (value.trim()) {
+      try {
+        const hex = base64ToHex(value.trim());
+        setMsgpackHex(hex);
+        setError('');
+      } catch {
+        // Don't update hex if base64 is invalid
+      }
+    } else {
+      setMsgpackHex('');
+    }
+  }, []);
+
+  // Handle hex input change - update base64 in real-time
+  const handleHexChange = useCallback((value: string) => {
+    setMsgpackHex(value);
+    if (value.trim()) {
+      try {
+        const base64 = hexToBase64(value.trim());
+        setMsgpackBase64(base64);
+        setError('');
+      } catch {
+        // Don't update base64 if hex is invalid
+      }
+    } else {
+      setMsgpackBase64('');
+    }
+  }, []);
 
   const handleMsgpackToJson = () => {
     setError('');
     try {
-      const json = msgpackToJson(msgpackInput.trim());
+      const json = msgpackToJson(msgpackBase64.trim());
       setJsonInput(json);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error');
@@ -21,14 +55,22 @@ function App() {
     setError('');
     try {
       const msgpack = jsonToMsgpack(jsonInput.trim());
-      setMsgpackInput(msgpack);
+      setMsgpackBase64(msgpack);
+      // Also update hex display
+      try {
+        const hex = base64ToHex(msgpack);
+        setMsgpackHex(hex);
+      } catch {
+        // Ignore hex conversion errors
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error');
     }
   };
 
   const clearAll = () => {
-    setMsgpackInput('');
+    setMsgpackBase64('');
+    setMsgpackHex('');
     setJsonInput('');
     setError('');
   };
@@ -51,24 +93,41 @@ function App() {
 
       <main className="converter-container">
         <div className="input-section">
-          <label htmlFor="msgpack-input" className="input-label">
-            <span className="label-icon">📦</span>
-            Base64 MsgPack
-          </label>
-          <textarea
-            id="msgpack-input"
-            className="input-area"
-            placeholder="Paste Base64-encoded MsgPack data here..."
-            value={msgpackInput}
-            onChange={(e) => setMsgpackInput(e.target.value)}
-          />
+          <div className="msgpack-inputs">
+            <div className="msgpack-input-group">
+              <label htmlFor="msgpack-base64-input" className="input-label">
+                <span className="label-icon">📦</span>
+                Base64 MsgPack
+              </label>
+              <textarea
+                id="msgpack-base64-input"
+                className="input-area msgpack-textarea"
+                placeholder="Paste Base64-encoded MsgPack data here..."
+                value={msgpackBase64}
+                onChange={(e) => handleBase64Change(e.target.value)}
+              />
+            </div>
+            <div className="msgpack-input-group">
+              <label htmlFor="msgpack-hex-input" className="input-label">
+                <span className="label-icon">🔢</span>
+                Hex (Space-separated)
+              </label>
+              <textarea
+                id="msgpack-hex-input"
+                className="input-area msgpack-textarea"
+                placeholder="Or paste hex bytes here (e.g., 81 A5 68 65 6C 6C 6F)..."
+                value={msgpackHex}
+                onChange={(e) => handleHexChange(e.target.value)}
+              />
+            </div>
+          </div>
         </div>
 
         <div className="buttons-section">
           <button
             className="convert-button to-json"
             onClick={handleMsgpackToJson}
-            disabled={!msgpackInput.trim()}
+            disabled={!msgpackBase64.trim()}
             title="Convert MsgPack to JSON"
           >
             <span className="button-icon">➡️</span>
@@ -93,12 +152,11 @@ function App() {
             <span className="label-icon">📄</span>
             JSON
           </label>
-          <textarea
+          <JsonHighlighter
             id="json-input"
-            className="input-area"
-            placeholder="Paste JSON data here..."
             value={jsonInput}
-            onChange={(e) => setJsonInput(e.target.value)}
+            onChange={setJsonInput}
+            placeholder="Paste JSON data here..."
           />
         </div>
       </main>
