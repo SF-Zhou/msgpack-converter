@@ -130,7 +130,7 @@ function parseMsgpackValue(
   // bin 32
   if (byte === 0xc6) {
     const length =
-      (data[pos + 1] << 24) | (data[pos + 2] << 16) | (data[pos + 3] << 8) | data[pos + 4];
+      ((data[pos + 1] << 24) | (data[pos + 2] << 16) | (data[pos + 3] << 8) | data[pos + 4]) >>> 0;
     return { value: data.slice(pos + 5, pos + 5 + length), endPos: pos + 5 + length };
   }
 
@@ -215,7 +215,7 @@ function parseMsgpackValue(
   // str 32
   if (byte === 0xdb) {
     const length =
-      (data[pos + 1] << 24) | (data[pos + 2] << 16) | (data[pos + 3] << 8) | data[pos + 4];
+      ((data[pos + 1] << 24) | (data[pos + 2] << 16) | (data[pos + 3] << 8) | data[pos + 4]) >>> 0;
     const strBytes = data.slice(pos + 5, pos + 5 + length);
     const str = new TextDecoder().decode(strBytes);
     return { value: str, endPos: pos + 5 + length };
@@ -237,7 +237,7 @@ function parseMsgpackValue(
   // array 32
   if (byte === 0xdd) {
     const count =
-      (data[pos + 1] << 24) | (data[pos + 2] << 16) | (data[pos + 3] << 8) | data[pos + 4];
+      ((data[pos + 1] << 24) | (data[pos + 2] << 16) | (data[pos + 3] << 8) | data[pos + 4]) >>> 0;
     let currentPos = pos + 5;
     const arr: unknown[] = [];
     for (let i = 0; i < count; i++) {
@@ -266,7 +266,7 @@ function parseMsgpackValue(
   // map 32
   if (byte === 0xdf) {
     const count =
-      (data[pos + 1] << 24) | (data[pos + 2] << 16) | (data[pos + 3] << 8) | data[pos + 4];
+      ((data[pos + 1] << 24) | (data[pos + 2] << 16) | (data[pos + 3] << 8) | data[pos + 4]) >>> 0;
     let currentPos = pos + 5;
     const obj: Record<string, unknown> = {};
     for (let i = 0; i < count; i++) {
@@ -319,7 +319,7 @@ function parseMsgpackValue(
   // ext 32
   if (byte === 0xc9) {
     const length =
-      (data[pos + 1] << 24) | (data[pos + 2] << 16) | (data[pos + 3] << 8) | data[pos + 4];
+      ((data[pos + 1] << 24) | (data[pos + 2] << 16) | (data[pos + 3] << 8) | data[pos + 4]) >>> 0;
     return { value: data.slice(pos, pos + 6 + length), endPos: pos + 6 + length };
   }
 
@@ -706,10 +706,11 @@ function buildMappings(
   // str 32
   if (byte === 0xdb) {
     const length =
-      (data[hexPos + 1] << 24) |
-      (data[hexPos + 2] << 16) |
-      (data[hexPos + 3] << 8) |
-      data[hexPos + 4];
+      ((data[hexPos + 1] << 24) |
+        (data[hexPos + 2] << 16) |
+        (data[hexPos + 3] << 8) |
+        data[hexPos + 4]) >>>
+      0;
     const strBytes = data.slice(hexPos + 5, hexPos + 5 + length);
     const str = new TextDecoder().decode(strBytes);
     const jsonStr = JSONBigNative.stringify(str);
@@ -756,10 +757,11 @@ function buildMappings(
   // array 32
   if (byte === 0xdd) {
     const count =
-      (data[hexPos + 1] << 24) |
-      (data[hexPos + 2] << 16) |
-      (data[hexPos + 3] << 8) |
-      data[hexPos + 4];
+      ((data[hexPos + 1] << 24) |
+        (data[hexPos + 2] << 16) |
+        (data[hexPos + 3] << 8) |
+        data[hexPos + 4]) >>>
+      0;
     // Skip opening bracket
     if (jsonString[jsonPos] === '[') {
       jsonPos++;
@@ -840,10 +842,11 @@ function buildMappings(
   // map 32
   if (byte === 0xdf) {
     const count =
-      (data[hexPos + 1] << 24) |
-      (data[hexPos + 2] << 16) |
-      (data[hexPos + 3] << 8) |
-      data[hexPos + 4];
+      ((data[hexPos + 1] << 24) |
+        (data[hexPos + 2] << 16) |
+        (data[hexPos + 3] << 8) |
+        data[hexPos + 4]) >>>
+      0;
     // Skip opening brace
     if (jsonString[jsonPos] === '{') {
       jsonPos++;

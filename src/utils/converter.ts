@@ -16,12 +16,177 @@ const UINT32_MAX = 0xffffffff;
 const INT32_MIN = -2147483648;
 
 /**
+ * Wrapper class to force a number to be encoded as float64 in msgpack.
+ * This is used when the original JSON explicitly included a decimal point or exponent.
+ */
+class Float64 {
+  value: number;
+  constructor(value: number) {
+    this.value = value;
+  }
+}
+
+/**
+ * Parse JSON and wrap float values (numbers with decimal point or exponent) in Float64.
+ * This preserves the original representation for msgpack encoding.
+ */
+function parseJsonWithFloats(jsonString: string): unknown {
+  // Pattern for numbers with decimal point or exponent
+  // Lookbehind ensures we're after a JSON delimiter (not in a string)
+  // Using a character set that includes [ { : , and whitespace
+  const floatPattern =
+    /(?<=[{[:,\s])(-?(?:0|[1-9]\d*)(?:\.\d+)(?:[eE][+-]?\d+)?|-?(?:0|[1-9]\d*)(?:[eE][+-]?\d+))(?=[}\],\s]|$)/g;
+
+  // Check if there are any float patterns
+  if (!floatPattern.test(jsonString)) {
+    return JSONBigNative.parse(jsonString);
+  }
+
+  // Reset regex state
+  floatPattern.lastIndex = 0;
+
+  // Build a modified JSON where floats are wrapped in special objects
+  const floatMarker = '__MSGPACK_FLOAT64__';
+  let modifiedJson = '';
+  let lastIndex = 0;
+
+  let matchResult;
+  while ((matchResult = floatPattern.exec(jsonString)) !== null) {
+    modifiedJson += jsonString.slice(lastIndex, matchResult.index);
+    modifiedJson += `{"${floatMarker}":${matchResult[0]}}`;
+    lastIndex = matchResult.index + matchResult[0].length;
+  }
+  modifiedJson += jsonString.slice(lastIndex);
+
+  // Parse the modified JSON
+  const parsed = JSONBigNative.parse(modifiedJson);
+
+  // Post-process to unwrap floats
+  function unwrapFloats(value: unknown): unknown {
+    if (value === null || value === undefined) {
+      return value;
+    }
+
+    if (Array.isArray(value)) {
+      return value.map(unwrapFloats);
+    }
+
+    if (typeof value === 'object') {
+      const obj = value as Record<string, unknown>;
+      // Check if this is a float marker object
+      if (floatMarker in obj && Object.keys(obj).length === 1) {
+        return new Float64(Number(obj[floatMarker]));
+      }
+      // Recursively process object properties
+      const result: Record<string, unknown> = {};
+      for (const [key, val] of Object.entries(obj)) {
+        result[key] = unwrapFloats(val);
+      }
+      return result;
+    }
+
+    return value;
+  }
+
+  return unwrapFloats(parsed);
+}
+
+/**
+ * Custom msgpack encoder that handles Float64 wrapper class.
+ * Uses the standard encode function for most types, but encodes Float64 as float64 format.
+ */
+function encodeValue(value: unknown, output: number[]): void {
+  if (value === null) {
+    output.push(0xc0);
+  } else if (value === true) {
+    output.push(0xc3);
+  } else if (value === false) {
+    output.push(0xc2);
+  } else if (value instanceof Float64) {
+    // Encode as float64: 0xcb followed by 8 bytes big-endian
+    output.push(0xcb);
+    const buffer = new ArrayBuffer(8);
+    const view = new DataView(buffer);
+    view.setFloat64(0, value.value, false);
+    const bytes = new Uint8Array(buffer);
+    for (const b of bytes) output.push(b);
+  } else if (typeof value === 'number') {
+    // Use standard msgpack encoding for numbers
+    const encoded = encode(value);
+    for (const b of encoded) output.push(b);
+  } else if (typeof value === 'bigint') {
+    // Use standard msgpack encoding for BigInt
+    const encoded = encode(value, { useBigInt64: true });
+    for (const b of encoded) output.push(b);
+  } else if (typeof value === 'string') {
+    // Use standard msgpack encoding for strings
+    const encoded = encode(value);
+    for (const b of encoded) output.push(b);
+  } else if (Array.isArray(value)) {
+    // Encode array header
+    if (value.length <= 15) {
+      output.push(0x90 | value.length);
+    } else if (value.length <= 0xffff) {
+      output.push(0xdc, (value.length >> 8) & 0xff, value.length & 0xff);
+    } else {
+      output.push(
+        0xdd,
+        (value.length >> 24) & 0xff,
+        (value.length >> 16) & 0xff,
+        (value.length >> 8) & 0xff,
+        value.length & 0xff
+      );
+    }
+    // Encode array elements
+    for (const item of value) {
+      encodeValue(item, output);
+    }
+  } else if (typeof value === 'object') {
+    // Encode object (map)
+    const entries = Object.entries(value as Record<string, unknown>);
+    if (entries.length <= 15) {
+      output.push(0x80 | entries.length);
+    } else if (entries.length <= 0xffff) {
+      output.push(0xde, (entries.length >> 8) & 0xff, entries.length & 0xff);
+    } else {
+      output.push(
+        0xdf,
+        (entries.length >> 24) & 0xff,
+        (entries.length >> 16) & 0xff,
+        (entries.length >> 8) & 0xff,
+        entries.length & 0xff
+      );
+    }
+    // Encode key-value pairs
+    for (const [key, val] of entries) {
+      encodeValue(key, output);
+      encodeValue(val, output);
+    }
+  }
+}
+
+/**
+ * Custom encode function that handles Float64 wrapper class.
+ */
+function encodeWithFloats(data: unknown): Uint8Array {
+  const output: number[] = [];
+  encodeValue(data, output);
+  return new Uint8Array(output);
+}
+
+/**
  * Recursively transform integers that exceed 32-bit range to BigInt.
  * This ensures they are encoded as int64/uint64 in msgpack instead of float64.
  * Small integers remain as Numbers for compact msgpack encoding.
+ * Float64 instances are preserved as-is.
  */
 function transformLargeIntegers(value: unknown): unknown {
   if (value === null || value === undefined) {
+    return value;
+  }
+
+  // Preserve Float64 instances
+  if (value instanceof Float64) {
     return value;
   }
 
@@ -98,18 +263,19 @@ export function msgpackToJson(base64String: string): string {
 /**
  * Convert JSON string to Base64-encoded msgpack data
  * Supports uint64 values via json-bigint
+ * Preserves float representation for numbers written with decimal points or exponents
  */
 export function jsonToMsgpack(jsonString: string): string {
   try {
-    // Parse JSON with BigInt support
-    const parsed = JSONBigNative.parse(jsonString);
+    // Parse JSON with float detection to preserve float representation
+    const parsed = parseJsonWithFloats(jsonString);
 
     // Transform integers exceeding 32-bit range to BigInt to ensure they are
     // encoded as int64/uint64 in msgpack instead of float64
     const data = transformLargeIntegers(parsed);
 
-    // Encode to msgpack
-    const encoded = encode(data, { extensionCodec, useBigInt64: true });
+    // Encode to msgpack with custom encoder that handles Float64
+    const encoded = encodeWithFloats(data);
 
     // Convert to base64
     const binaryString = Array.from(encoded)
@@ -169,25 +335,25 @@ export function base64ToHex(base64String: string): string {
 export function hexToBase64(hexString: string): string {
   // Remove all whitespace and normalize
   const cleanHex = hexString.replace(/\s+/g, '');
-  
+
   if (cleanHex.length === 0) {
     return '';
   }
-  
+
   if (cleanHex.length % 2 !== 0) {
     throw new Error('Hex string must have an even number of characters');
   }
-  
+
   if (!/^[0-9a-fA-F]*$/.test(cleanHex)) {
     throw new Error('Invalid hex characters');
   }
-  
+
   let binaryString = '';
   for (let i = 0; i < cleanHex.length; i += 2) {
     const byte = parseInt(cleanHex.substring(i, i + 2), 16);
     binaryString += String.fromCharCode(byte);
   }
-  
+
   return btoa(binaryString);
 }
 
