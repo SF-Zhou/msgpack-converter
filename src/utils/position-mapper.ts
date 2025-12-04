@@ -511,7 +511,8 @@ function buildMappings(
   if (byte === 0xca) {
     const view = new DataView(data.buffer, data.byteOffset + hexPos + 1, 4);
     const value = view.getFloat32(0, false);
-    const valueStr = JSONBigNative.stringify(value);
+    // Format as float with .0 suffix for whole numbers to match msgpackToJson output
+    const valueStr = Number.isInteger(value) ? `${value}.0` : String(value);
     const endJsonPos = jsonPos + valueStr.length;
     mappings.push({
       jsonStart: jsonPos,
@@ -527,7 +528,8 @@ function buildMappings(
   if (byte === 0xcb) {
     const view = new DataView(data.buffer, data.byteOffset + hexPos + 1, 8);
     const value = view.getFloat64(0, false);
-    const valueStr = JSONBigNative.stringify(value);
+    // Format as float with .0 suffix for whole numbers to match msgpackToJson output
+    const valueStr = Number.isInteger(value) ? `${value}.0` : String(value);
     const endJsonPos = jsonPos + valueStr.length;
     mappings.push({
       jsonStart: jsonPos,

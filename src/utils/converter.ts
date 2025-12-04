@@ -27,6 +27,17 @@ class Float64 {
 }
 
 /**
+ * Wrapper class to mark a decoded float64 value.
+ * This allows us to distinguish float64 values from integers when serializing to JSON.
+ */
+class DecodedFloat64 {
+  value: number;
+  constructor(value: number) {
+    this.value = value;
+  }
+}
+
+/**
  * Parse JSON and wrap float values (numbers with decimal point or exponent) in Float64.
  * This preserves the original representation for msgpack encoding.
  */
@@ -237,8 +248,484 @@ function getErrorMessage(error: unknown): string {
 }
 
 /**
+ * Read a string value from msgpack data at the given position.
+ * Returns the string value and the end position.
+ */
+function readMsgpackString(data: Uint8Array, pos: number): { value: string; endPos: number } {
+  const byte = data[pos];
+
+  // fixstr (0xa0 - 0xbf)
+  if (byte >= 0xa0 && byte <= 0xbf) {
+    const length = byte & 0x1f;
+    const strBytes = data.slice(pos + 1, pos + 1 + length);
+    return { value: new TextDecoder().decode(strBytes), endPos: pos + 1 + length };
+  }
+
+  // str 8 (0xd9)
+  if (byte === 0xd9) {
+    const length = data[pos + 1];
+    const strBytes = data.slice(pos + 2, pos + 2 + length);
+    return { value: new TextDecoder().decode(strBytes), endPos: pos + 2 + length };
+  }
+
+  // str 16 (0xda)
+  if (byte === 0xda) {
+    const length = (data[pos + 1] << 8) | data[pos + 2];
+    const strBytes = data.slice(pos + 3, pos + 3 + length);
+    return { value: new TextDecoder().decode(strBytes), endPos: pos + 3 + length };
+  }
+
+  // str 32 (0xdb)
+  if (byte === 0xdb) {
+    const length =
+      ((data[pos + 1] << 24) | (data[pos + 2] << 16) | (data[pos + 3] << 8) | data[pos + 4]) >>> 0;
+    const strBytes = data.slice(pos + 5, pos + 5 + length);
+    return { value: new TextDecoder().decode(strBytes), endPos: pos + 5 + length };
+  }
+
+  // Not a string, return empty
+  return { value: '', endPos: pos };
+}
+
+/**
+ * Skip a msgpack value and return the end position.
+ */
+function skipMsgpackValue(data: Uint8Array, pos: number): number {
+  const byte = data[pos];
+
+  // Positive fixint (0x00 - 0x7f)
+  if (byte <= 0x7f) return pos + 1;
+  // Negative fixint (0xe0 - 0xff)
+  if (byte >= 0xe0) return pos + 1;
+
+  // fixmap (0x80 - 0x8f)
+  if (byte >= 0x80 && byte <= 0x8f) {
+    const count = byte & 0x0f;
+    let currentPos = pos + 1;
+    for (let i = 0; i < count; i++) {
+      currentPos = skipMsgpackValue(data, currentPos); // key
+      currentPos = skipMsgpackValue(data, currentPos); // value
+    }
+    return currentPos;
+  }
+
+  // fixarray (0x90 - 0x9f)
+  if (byte >= 0x90 && byte <= 0x9f) {
+    const count = byte & 0x0f;
+    let currentPos = pos + 1;
+    for (let i = 0; i < count; i++) {
+      currentPos = skipMsgpackValue(data, currentPos);
+    }
+    return currentPos;
+  }
+
+  // fixstr (0xa0 - 0xbf)
+  if (byte >= 0xa0 && byte <= 0xbf) {
+    const length = byte & 0x1f;
+    return pos + 1 + length;
+  }
+
+  // nil (0xc0)
+  if (byte === 0xc0) return pos + 1;
+  // false (0xc2)
+  if (byte === 0xc2) return pos + 1;
+  // true (0xc3)
+  if (byte === 0xc3) return pos + 1;
+
+  // bin 8 (0xc4)
+  if (byte === 0xc4) return pos + 2 + data[pos + 1];
+  // bin 16 (0xc5)
+  if (byte === 0xc5) return pos + 3 + ((data[pos + 1] << 8) | data[pos + 2]);
+  // bin 32 (0xc6)
+  if (byte === 0xc6) {
+    const length =
+      ((data[pos + 1] << 24) | (data[pos + 2] << 16) | (data[pos + 3] << 8) | data[pos + 4]) >>> 0;
+    return pos + 5 + length;
+  }
+
+  // float 32 (0xca)
+  if (byte === 0xca) return pos + 5;
+  // float 64 (0xcb)
+  if (byte === 0xcb) return pos + 9;
+  // uint 8 (0xcc)
+  if (byte === 0xcc) return pos + 2;
+  // uint 16 (0xcd)
+  if (byte === 0xcd) return pos + 3;
+  // uint 32 (0xce)
+  if (byte === 0xce) return pos + 5;
+  // uint 64 (0xcf)
+  if (byte === 0xcf) return pos + 9;
+  // int 8 (0xd0)
+  if (byte === 0xd0) return pos + 2;
+  // int 16 (0xd1)
+  if (byte === 0xd1) return pos + 3;
+  // int 32 (0xd2)
+  if (byte === 0xd2) return pos + 5;
+  // int 64 (0xd3)
+  if (byte === 0xd3) return pos + 9;
+
+  // str 8 (0xd9)
+  if (byte === 0xd9) return pos + 2 + data[pos + 1];
+  // str 16 (0xda)
+  if (byte === 0xda) return pos + 3 + ((data[pos + 1] << 8) | data[pos + 2]);
+  // str 32 (0xdb)
+  if (byte === 0xdb) {
+    const length =
+      ((data[pos + 1] << 24) | (data[pos + 2] << 16) | (data[pos + 3] << 8) | data[pos + 4]) >>> 0;
+    return pos + 5 + length;
+  }
+
+  // array 16 (0xdc)
+  if (byte === 0xdc) {
+    const count = (data[pos + 1] << 8) | data[pos + 2];
+    let currentPos = pos + 3;
+    for (let i = 0; i < count; i++) {
+      currentPos = skipMsgpackValue(data, currentPos);
+    }
+    return currentPos;
+  }
+
+  // array 32 (0xdd)
+  if (byte === 0xdd) {
+    const count =
+      ((data[pos + 1] << 24) | (data[pos + 2] << 16) | (data[pos + 3] << 8) | data[pos + 4]) >>> 0;
+    let currentPos = pos + 5;
+    for (let i = 0; i < count; i++) {
+      currentPos = skipMsgpackValue(data, currentPos);
+    }
+    return currentPos;
+  }
+
+  // map 16 (0xde)
+  if (byte === 0xde) {
+    const count = (data[pos + 1] << 8) | data[pos + 2];
+    let currentPos = pos + 3;
+    for (let i = 0; i < count; i++) {
+      currentPos = skipMsgpackValue(data, currentPos); // key
+      currentPos = skipMsgpackValue(data, currentPos); // value
+    }
+    return currentPos;
+  }
+
+  // map 32 (0xdf)
+  if (byte === 0xdf) {
+    const count =
+      ((data[pos + 1] << 24) | (data[pos + 2] << 16) | (data[pos + 3] << 8) | data[pos + 4]) >>> 0;
+    let currentPos = pos + 5;
+    for (let i = 0; i < count; i++) {
+      currentPos = skipMsgpackValue(data, currentPos); // key
+      currentPos = skipMsgpackValue(data, currentPos); // value
+    }
+    return currentPos;
+  }
+
+  // Default - skip 1 byte
+  return pos + 1;
+}
+
+/**
+ * Scan msgpack bytes and collect paths to float64/float32 values.
+ * Returns a set of JSON path strings that contain float values.
+ */
+function scanFloat64Paths(
+  data: Uint8Array,
+  pos: number = 0,
+  path: string = ''
+): { paths: Set<string>; endPos: number } {
+  const paths = new Set<string>();
+  const byte = data[pos];
+
+  // Positive fixint (0x00 - 0x7f)
+  if (byte <= 0x7f) {
+    return { paths, endPos: pos + 1 };
+  }
+
+  // Negative fixint (0xe0 - 0xff)
+  if (byte >= 0xe0) {
+    return { paths, endPos: pos + 1 };
+  }
+
+  // fixmap (0x80 - 0x8f)
+  if (byte >= 0x80 && byte <= 0x8f) {
+    const count = byte & 0x0f;
+    let currentPos = pos + 1;
+    for (let i = 0; i < count; i++) {
+      // Read key (usually a string)
+      const keyStartPos = currentPos;
+      const { value: keyStr, endPos: keyEndPos } = readMsgpackString(data, currentPos);
+      if (keyEndPos === keyStartPos) {
+        // Key is not a string, skip it
+        currentPos = skipMsgpackValue(data, currentPos);
+      } else {
+        currentPos = keyEndPos;
+      }
+      // Get value
+      const valuePath = path ? `${path}.${keyStr || `[${i}]`}` : keyStr || `[${i}]`;
+      const valueResult = scanFloat64Paths(data, currentPos, valuePath);
+      valueResult.paths.forEach((p) => paths.add(p));
+      currentPos = valueResult.endPos;
+    }
+    return { paths, endPos: currentPos };
+  }
+
+  // fixarray (0x90 - 0x9f)
+  if (byte >= 0x90 && byte <= 0x9f) {
+    const count = byte & 0x0f;
+    let currentPos = pos + 1;
+    for (let i = 0; i < count; i++) {
+      const itemPath = `${path}[${i}]`;
+      const result = scanFloat64Paths(data, currentPos, itemPath);
+      result.paths.forEach((p) => paths.add(p));
+      currentPos = result.endPos;
+    }
+    return { paths, endPos: currentPos };
+  }
+
+  // fixstr (0xa0 - 0xbf)
+  if (byte >= 0xa0 && byte <= 0xbf) {
+    const length = byte & 0x1f;
+    return { paths, endPos: pos + 1 + length };
+  }
+
+  // nil (0xc0)
+  if (byte === 0xc0) {
+    return { paths, endPos: pos + 1 };
+  }
+
+  // false (0xc2)
+  if (byte === 0xc2) {
+    return { paths, endPos: pos + 1 };
+  }
+
+  // true (0xc3)
+  if (byte === 0xc3) {
+    return { paths, endPos: pos + 1 };
+  }
+
+  // bin 8 (0xc4)
+  if (byte === 0xc4) {
+    const length = data[pos + 1];
+    return { paths, endPos: pos + 2 + length };
+  }
+
+  // bin 16 (0xc5)
+  if (byte === 0xc5) {
+    const length = (data[pos + 1] << 8) | data[pos + 2];
+    return { paths, endPos: pos + 3 + length };
+  }
+
+  // bin 32 (0xc6)
+  if (byte === 0xc6) {
+    const length =
+      ((data[pos + 1] << 24) | (data[pos + 2] << 16) | (data[pos + 3] << 8) | data[pos + 4]) >>> 0;
+    return { paths, endPos: pos + 5 + length };
+  }
+
+  // float 32 (0xca)
+  if (byte === 0xca) {
+    paths.add(path);
+    return { paths, endPos: pos + 5 };
+  }
+
+  // float 64 (0xcb)
+  if (byte === 0xcb) {
+    paths.add(path);
+    return { paths, endPos: pos + 9 };
+  }
+
+  // uint 8 (0xcc)
+  if (byte === 0xcc) {
+    return { paths, endPos: pos + 2 };
+  }
+
+  // uint 16 (0xcd)
+  if (byte === 0xcd) {
+    return { paths, endPos: pos + 3 };
+  }
+
+  // uint 32 (0xce)
+  if (byte === 0xce) {
+    return { paths, endPos: pos + 5 };
+  }
+
+  // uint 64 (0xcf)
+  if (byte === 0xcf) {
+    return { paths, endPos: pos + 9 };
+  }
+
+  // int 8 (0xd0)
+  if (byte === 0xd0) {
+    return { paths, endPos: pos + 2 };
+  }
+
+  // int 16 (0xd1)
+  if (byte === 0xd1) {
+    return { paths, endPos: pos + 3 };
+  }
+
+  // int 32 (0xd2)
+  if (byte === 0xd2) {
+    return { paths, endPos: pos + 5 };
+  }
+
+  // int 64 (0xd3)
+  if (byte === 0xd3) {
+    return { paths, endPos: pos + 9 };
+  }
+
+  // str 8 (0xd9)
+  if (byte === 0xd9) {
+    const length = data[pos + 1];
+    return { paths, endPos: pos + 2 + length };
+  }
+
+  // str 16 (0xda)
+  if (byte === 0xda) {
+    const length = (data[pos + 1] << 8) | data[pos + 2];
+    return { paths, endPos: pos + 3 + length };
+  }
+
+  // str 32 (0xdb)
+  if (byte === 0xdb) {
+    const length =
+      ((data[pos + 1] << 24) | (data[pos + 2] << 16) | (data[pos + 3] << 8) | data[pos + 4]) >>> 0;
+    return { paths, endPos: pos + 5 + length };
+  }
+
+  // array 16 (0xdc)
+  if (byte === 0xdc) {
+    const count = (data[pos + 1] << 8) | data[pos + 2];
+    let currentPos = pos + 3;
+    for (let i = 0; i < count; i++) {
+      const itemPath = `${path}[${i}]`;
+      const result = scanFloat64Paths(data, currentPos, itemPath);
+      result.paths.forEach((p) => paths.add(p));
+      currentPos = result.endPos;
+    }
+    return { paths, endPos: currentPos };
+  }
+
+  // array 32 (0xdd)
+  if (byte === 0xdd) {
+    const count =
+      ((data[pos + 1] << 24) | (data[pos + 2] << 16) | (data[pos + 3] << 8) | data[pos + 4]) >>> 0;
+    let currentPos = pos + 5;
+    for (let i = 0; i < count; i++) {
+      const itemPath = `${path}[${i}]`;
+      const result = scanFloat64Paths(data, currentPos, itemPath);
+      result.paths.forEach((p) => paths.add(p));
+      currentPos = result.endPos;
+    }
+    return { paths, endPos: currentPos };
+  }
+
+  // map 16 (0xde)
+  if (byte === 0xde) {
+    const count = (data[pos + 1] << 8) | data[pos + 2];
+    let currentPos = pos + 3;
+    for (let i = 0; i < count; i++) {
+      // Read key
+      const { value: keyStr, endPos: keyEndPos } = readMsgpackString(data, currentPos);
+      if (keyEndPos === currentPos) {
+        currentPos = skipMsgpackValue(data, currentPos);
+      } else {
+        currentPos = keyEndPos;
+      }
+      // Get value
+      const valuePath = path ? `${path}.${keyStr || `[${i}]`}` : keyStr || `[${i}]`;
+      const valueResult = scanFloat64Paths(data, currentPos, valuePath);
+      valueResult.paths.forEach((p) => paths.add(p));
+      currentPos = valueResult.endPos;
+    }
+    return { paths, endPos: currentPos };
+  }
+
+  // map 32 (0xdf)
+  if (byte === 0xdf) {
+    const count =
+      ((data[pos + 1] << 24) | (data[pos + 2] << 16) | (data[pos + 3] << 8) | data[pos + 4]) >>> 0;
+    let currentPos = pos + 5;
+    for (let i = 0; i < count; i++) {
+      // Read key
+      const { value: keyStr, endPos: keyEndPos } = readMsgpackString(data, currentPos);
+      if (keyEndPos === currentPos) {
+        currentPos = skipMsgpackValue(data, currentPos);
+      } else {
+        currentPos = keyEndPos;
+      }
+      // Get value
+      const valuePath = path ? `${path}.${keyStr || `[${i}]`}` : keyStr || `[${i}]`;
+      const valueResult = scanFloat64Paths(data, currentPos, valuePath);
+      valueResult.paths.forEach((p) => paths.add(p));
+      currentPos = valueResult.endPos;
+    }
+    return { paths, endPos: currentPos };
+  }
+
+  // Default - skip unknown byte
+  return { paths, endPos: pos + 1 };
+}
+
+/**
+ * Recursively wrap float64 values in DecodedFloat64 based on the paths.
+ */
+function wrapFloat64Values(
+  value: unknown,
+  float64Paths: Set<string>,
+  currentPath: string = ''
+): unknown {
+  if (value === null || value === undefined) {
+    return value;
+  }
+
+  // Check if this path is a float64
+  if (typeof value === 'number' && float64Paths.has(currentPath)) {
+    return new DecodedFloat64(value);
+  }
+
+  // Handle arrays
+  if (Array.isArray(value)) {
+    return value.map((item, index) => wrapFloat64Values(item, float64Paths, `${currentPath}[${index}]`));
+  }
+
+  // Handle objects
+  if (typeof value === 'object') {
+    const result: Record<string, unknown> = {};
+    for (const [key, val] of Object.entries(value)) {
+      const newPath = currentPath ? `${currentPath}.${key}` : key;
+      result[key] = wrapFloat64Values(val, float64Paths, newPath);
+    }
+    return result;
+  }
+
+  return value;
+}
+
+/**
+ * Custom stringify that formats DecodedFloat64 values with .0 suffix for whole numbers.
+ */
+function stringifyWithFloats(value: unknown, indent: number = 2): string {
+  function replacer(_key: string, val: unknown): unknown {
+    if (val instanceof DecodedFloat64) {
+      // Return a special marker that we'll replace later
+      const strVal = Number.isInteger(val.value) ? `${val.value}.0` : String(val.value);
+      return `__FLOAT64_MARKER_${strVal}__`;
+    }
+    return val;
+  }
+
+  let json = JSONBigNative.stringify(value, replacer, indent);
+
+  // Replace the quoted markers with unquoted numbers
+  json = json.replace(/"__FLOAT64_MARKER_(-?\d+\.?\d*(?:[eE][+-]?\d+)?)__"/g, '$1');
+
+  return json;
+}
+
+/**
  * Convert Base64-encoded msgpack data to pretty JSON string
  * Supports uint64 values by using BigInt and json-bigint
+ * Preserves float representation by adding .0 suffix to whole number floats
  */
 export function msgpackToJson(base64String: string): string {
   try {
@@ -249,11 +736,17 @@ export function msgpackToJson(base64String: string): string {
       bytes[i] = binaryString.charCodeAt(i);
     }
 
+    // Scan for float64 paths before decoding
+    const { paths: float64Paths } = scanFloat64Paths(bytes);
+
     // Decode msgpack
     const data = decode(bytes, { extensionCodec, useBigInt64: true });
 
-    // Convert to pretty JSON with BigInt support
-    return JSONBigNative.stringify(data, null, 2);
+    // Wrap float64 values
+    const wrappedData = wrapFloat64Values(data, float64Paths);
+
+    // Convert to pretty JSON with float preservation
+    return stringifyWithFloats(wrappedData);
   } catch (error) {
     const message = getErrorMessage(error);
     throw new Error(`Failed to convert msgpack to JSON: ${message}`);
