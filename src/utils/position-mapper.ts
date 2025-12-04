@@ -18,6 +18,33 @@ export interface PositionMapping {
 }
 
 /**
+ * Skip whitespace characters in a JSON string starting from a given position.
+ */
+function skipWhitespace(jsonString: string, pos: number): number {
+  while (pos < jsonString.length && /\s/.test(jsonString[pos])) {
+    pos++;
+  }
+  return pos;
+}
+
+/**
+ * Skip whitespace and specified delimiter characters in a JSON string.
+ */
+function skipWhitespaceAndDelimiters(
+  jsonString: string,
+  pos: number,
+  delimiters: string
+): number {
+  while (
+    pos < jsonString.length &&
+    (/\s/.test(jsonString[pos]) || delimiters.includes(jsonString[pos]))
+  ) {
+    pos++;
+  }
+  return pos;
+}
+
+/**
  * Parse a msgpack value and track the byte range it occupies.
  * Returns the decoded value and the end position.
  */
@@ -313,9 +340,7 @@ function buildMappings(
   const byte = data[hexPos];
 
   // Skip whitespace in JSON
-  while (jsonPos < jsonString.length && /\s/.test(jsonString[jsonPos])) {
-    jsonPos++;
-  }
+  jsonPos = skipWhitespace(jsonString, jsonPos);
 
   // Positive fixint (0x00 - 0x7f)
   if (byte <= 0x7f) {
@@ -358,12 +383,7 @@ function buildMappings(
 
     for (let i = 0; i < count; i++) {
       // Skip whitespace and comma
-      while (
-        currentJsonPos < jsonString.length &&
-        (/\s/.test(jsonString[currentJsonPos]) || jsonString[currentJsonPos] === ',')
-      ) {
-        currentJsonPos++;
-      }
+      currentJsonPos = skipWhitespaceAndDelimiters(jsonString, currentJsonPos, ',');
 
       // Parse key
       const keyHexStart = currentHexPos;
@@ -385,12 +405,7 @@ function buildMappings(
       }
 
       // Skip colon and whitespace
-      while (
-        currentJsonPos < jsonString.length &&
-        (/\s/.test(jsonString[currentJsonPos]) || jsonString[currentJsonPos] === ':')
-      ) {
-        currentJsonPos++;
-      }
+      currentJsonPos = skipWhitespaceAndDelimiters(jsonString, currentJsonPos, ':');
 
       // Parse value recursively
       const valueResult = buildMappings(data, jsonString, mappings, currentHexPos, currentJsonPos);
@@ -399,9 +414,7 @@ function buildMappings(
     }
 
     // Skip closing brace
-    while (currentJsonPos < jsonString.length && /\s/.test(jsonString[currentJsonPos])) {
-      currentJsonPos++;
-    }
+    currentJsonPos = skipWhitespace(jsonString, currentJsonPos);
     if (jsonString[currentJsonPos] === '}') {
       currentJsonPos++;
     }
@@ -421,12 +434,7 @@ function buildMappings(
 
     for (let i = 0; i < count; i++) {
       // Skip whitespace and comma
-      while (
-        currentJsonPos < jsonString.length &&
-        (/\s/.test(jsonString[currentJsonPos]) || jsonString[currentJsonPos] === ',')
-      ) {
-        currentJsonPos++;
-      }
+      currentJsonPos = skipWhitespaceAndDelimiters(jsonString, currentJsonPos, ',');
 
       // Parse value recursively
       const valueResult = buildMappings(data, jsonString, mappings, currentHexPos, currentJsonPos);
@@ -435,9 +443,7 @@ function buildMappings(
     }
 
     // Skip closing bracket
-    while (currentJsonPos < jsonString.length && /\s/.test(jsonString[currentJsonPos])) {
-      currentJsonPos++;
-    }
+    currentJsonPos = skipWhitespace(jsonString, currentJsonPos);
     if (jsonString[currentJsonPos] === ']') {
       currentJsonPos++;
     }
@@ -730,12 +736,7 @@ function buildMappings(
 
     for (let i = 0; i < count; i++) {
       // Skip whitespace and comma
-      while (
-        currentJsonPos < jsonString.length &&
-        (/\s/.test(jsonString[currentJsonPos]) || jsonString[currentJsonPos] === ',')
-      ) {
-        currentJsonPos++;
-      }
+      currentJsonPos = skipWhitespaceAndDelimiters(jsonString, currentJsonPos, ',');
 
       // Parse value recursively
       const valueResult = buildMappings(data, jsonString, mappings, currentHexPos, currentJsonPos);
@@ -744,9 +745,7 @@ function buildMappings(
     }
 
     // Skip closing bracket
-    while (currentJsonPos < jsonString.length && /\s/.test(jsonString[currentJsonPos])) {
-      currentJsonPos++;
-    }
+    currentJsonPos = skipWhitespace(jsonString, currentJsonPos);
     if (jsonString[currentJsonPos] === ']') {
       currentJsonPos++;
     }
@@ -770,12 +769,7 @@ function buildMappings(
 
     for (let i = 0; i < count; i++) {
       // Skip whitespace and comma
-      while (
-        currentJsonPos < jsonString.length &&
-        (/\s/.test(jsonString[currentJsonPos]) || jsonString[currentJsonPos] === ',')
-      ) {
-        currentJsonPos++;
-      }
+      currentJsonPos = skipWhitespaceAndDelimiters(jsonString, currentJsonPos, ',');
 
       // Parse value recursively
       const valueResult = buildMappings(data, jsonString, mappings, currentHexPos, currentJsonPos);
@@ -784,9 +778,7 @@ function buildMappings(
     }
 
     // Skip closing bracket
-    while (currentJsonPos < jsonString.length && /\s/.test(jsonString[currentJsonPos])) {
-      currentJsonPos++;
-    }
+    currentJsonPos = skipWhitespace(jsonString, currentJsonPos);
     if (jsonString[currentJsonPos] === ']') {
       currentJsonPos++;
     }
@@ -806,12 +798,7 @@ function buildMappings(
 
     for (let i = 0; i < count; i++) {
       // Skip whitespace and comma
-      while (
-        currentJsonPos < jsonString.length &&
-        (/\s/.test(jsonString[currentJsonPos]) || jsonString[currentJsonPos] === ',')
-      ) {
-        currentJsonPos++;
-      }
+      currentJsonPos = skipWhitespaceAndDelimiters(jsonString, currentJsonPos, ',');
 
       // Parse key
       const keyHexStart = currentHexPos;
@@ -833,12 +820,7 @@ function buildMappings(
       }
 
       // Skip colon and whitespace
-      while (
-        currentJsonPos < jsonString.length &&
-        (/\s/.test(jsonString[currentJsonPos]) || jsonString[currentJsonPos] === ':')
-      ) {
-        currentJsonPos++;
-      }
+      currentJsonPos = skipWhitespaceAndDelimiters(jsonString, currentJsonPos, ':');
 
       // Parse value recursively
       const valueResult = buildMappings(data, jsonString, mappings, currentHexPos, currentJsonPos);
@@ -847,9 +829,7 @@ function buildMappings(
     }
 
     // Skip closing brace
-    while (currentJsonPos < jsonString.length && /\s/.test(jsonString[currentJsonPos])) {
-      currentJsonPos++;
-    }
+    currentJsonPos = skipWhitespace(jsonString, currentJsonPos);
     if (jsonString[currentJsonPos] === '}') {
       currentJsonPos++;
     }
@@ -873,12 +853,7 @@ function buildMappings(
 
     for (let i = 0; i < count; i++) {
       // Skip whitespace and comma
-      while (
-        currentJsonPos < jsonString.length &&
-        (/\s/.test(jsonString[currentJsonPos]) || jsonString[currentJsonPos] === ',')
-      ) {
-        currentJsonPos++;
-      }
+      currentJsonPos = skipWhitespaceAndDelimiters(jsonString, currentJsonPos, ',');
 
       // Parse key
       const keyHexStart = currentHexPos;
@@ -900,12 +875,7 @@ function buildMappings(
       }
 
       // Skip colon and whitespace
-      while (
-        currentJsonPos < jsonString.length &&
-        (/\s/.test(jsonString[currentJsonPos]) || jsonString[currentJsonPos] === ':')
-      ) {
-        currentJsonPos++;
-      }
+      currentJsonPos = skipWhitespaceAndDelimiters(jsonString, currentJsonPos, ':');
 
       // Parse value recursively
       const valueResult = buildMappings(data, jsonString, mappings, currentHexPos, currentJsonPos);
@@ -914,9 +884,7 @@ function buildMappings(
     }
 
     // Skip closing brace
-    while (currentJsonPos < jsonString.length && /\s/.test(jsonString[currentJsonPos])) {
-      currentJsonPos++;
-    }
+    currentJsonPos = skipWhitespace(jsonString, currentJsonPos);
     if (jsonString[currentJsonPos] === '}') {
       currentJsonPos++;
     }

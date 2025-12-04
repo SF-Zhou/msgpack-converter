@@ -8,6 +8,7 @@ import {
   byteRangeToHexCharRange,
   type PositionMapping,
 } from './utils/position-mapper';
+import { base64ToBytes } from './utils/helpers';
 import './App.css';
 
 function App() {
@@ -24,11 +25,7 @@ function App() {
   const positionMappings = useMemo<PositionMapping[]>(() => {
     if (!msgpackBase64 || !jsonInput) return [];
     try {
-      const binaryString = atob(msgpackBase64.trim());
-      const bytes = new Uint8Array(binaryString.length);
-      for (let i = 0; i < binaryString.length; i++) {
-        bytes[i] = binaryString.charCodeAt(i);
-      }
+      const bytes = base64ToBytes(msgpackBase64.trim());
       return createPositionMappings(bytes, jsonInput);
     } catch {
       return [];

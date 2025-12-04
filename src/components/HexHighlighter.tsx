@@ -1,4 +1,5 @@
 import { useRef, useEffect, useState, useMemo, useCallback } from 'react';
+import { escapeHtml } from '../utils/helpers';
 import './HexHighlighter.css';
 
 interface HexHighlighterProps {
@@ -24,15 +25,6 @@ export function HexHighlighter({
   // Create highlighted HTML
   const highlightedHtml = useMemo(() => {
     if (!value) return '';
-
-    // Escape HTML special characters
-    const escapeHtml = (str: string) =>
-      str
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#039;');
 
     if (!highlightRange) {
       return escapeHtml(value);
