@@ -48,12 +48,40 @@ function tokenizeJson(json: string): { type: string; value: string }[] {
       continue;
     }
 
-    // Number
+    // Number - match JSON number format more precisely
     if (/[-\d]/.test(char)) {
       let num = '';
-      while (i < json.length && /[-\d.eE+]/.test(json[i])) {
+      // Optional minus sign
+      if (json[i] === '-') {
         num += json[i];
         i++;
+      }
+      // Integer part
+      while (i < json.length && /\d/.test(json[i])) {
+        num += json[i];
+        i++;
+      }
+      // Optional fractional part
+      if (i < json.length && json[i] === '.') {
+        num += json[i];
+        i++;
+        while (i < json.length && /\d/.test(json[i])) {
+          num += json[i];
+          i++;
+        }
+      }
+      // Optional exponent part
+      if (i < json.length && /[eE]/.test(json[i])) {
+        num += json[i];
+        i++;
+        if (i < json.length && /[+-]/.test(json[i])) {
+          num += json[i];
+          i++;
+        }
+        while (i < json.length && /\d/.test(json[i])) {
+          num += json[i];
+          i++;
+        }
       }
       tokens.push({ type: 'number', value: num });
       continue;

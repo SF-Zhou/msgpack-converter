@@ -184,7 +184,7 @@ export function hexToBase64(hexString: string): string {
   
   let binaryString = '';
   for (let i = 0; i < cleanHex.length; i += 2) {
-    const byte = parseInt(cleanHex.substr(i, 2), 16);
+    const byte = parseInt(cleanHex.substring(i, i + 2), 16);
     binaryString += String.fromCharCode(byte);
   }
   
