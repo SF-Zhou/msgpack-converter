@@ -43,10 +43,10 @@ class DecodedFloat64 {
  */
 function parseJsonWithFloats(jsonString: string): unknown {
   // Pattern for numbers with decimal point or exponent
-  // Lookbehind ensures we're after a JSON delimiter (not in a string)
-  // Using a character set that includes [ { : , and whitespace
+  // Lookbehind ensures we're after a JSON delimiter (not in a string) OR at start of string
+  // Using a character set that includes [ { : , whitespace, and ^ for start of string
   const floatPattern =
-    /(?<=[{[:,\s])(-?(?:0|[1-9]\d*)(?:\.\d+)(?:[eE][+-]?\d+)?|-?(?:0|[1-9]\d*)(?:[eE][+-]?\d+))(?=[}\],\s]|$)/g;
+    /(?<=^|[{[:,\s])(-?(?:0|[1-9]\d*)(?:\.\d+)(?:[eE][+-]?\d+)?|-?(?:0|[1-9]\d*)(?:[eE][+-]?\d+))(?=[}\],\s]|$)/g;
 
   // Check if there are any float patterns
   if (!floatPattern.test(jsonString)) {
