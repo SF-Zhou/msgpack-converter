@@ -22,8 +22,13 @@ export function JsonHighlighter({ value, onChange, placeholder, id }: JsonHighli
     try {
       return Prism.highlight(value, Prism.languages.json, 'json');
     } catch {
-      // If highlighting fails, return escaped text
-      return value.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      // If highlighting fails, return properly escaped text
+      return value
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
     }
   }, [value]);
 
