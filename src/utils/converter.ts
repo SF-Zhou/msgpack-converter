@@ -1,5 +1,5 @@
 import JSONBig from 'json-bigint';
-import { msgPackEncoder, DecodedFloat64 } from './msgpack-encoder';
+import { msgPackEncoder } from './msgpack-encoder';
 
 // Create a custom JSON parser that uses BigInt for large integers
 // useNativeBigInt: true uses native BigInt for values exceeding safe integer limits
@@ -28,30 +28,12 @@ function getErrorMessage(error: unknown): string {
 }
 
 /**
- * Custom stringify that formats DecodedFloat64 values with .0 suffix for whole numbers.
- */
-function stringifyWithFloats(value: unknown, indent: number = 2): string {
-  function replacer(_key: string, val: unknown): unknown {
-    if (val instanceof DecodedFloat64) {
-      // Return a special marker that we'll replace later
-      const strVal = Number.isInteger(val.value) ? `${val.value}.0` : String(val.value);
-      return `__FLOAT64_MARKER_${strVal}__`;
-    }
-    return val;
-  }
-
-  let json = JSONBigNative.stringify(value, replacer, indent);
-
-  // Replace the quoted markers with unquoted numbers
-  json = json.replace(/"__FLOAT64_MARKER_(-?\d+\.?\d*(?:[eE][+-]?\d+)?)__"/g, '$1');
-
-  return json;
-}
-
-/**
  * Convert Base64-encoded msgpack data to pretty JSON string
  * Supports uint64 values by using BigInt and json-bigint
  * Preserves float representation by adding .0 suffix to whole number floats
+ * 
+ * DecodedFloat64 objects have _isBigNumber = true which makes json-bigint
+ * output their toJSON() result unquoted, avoiding the need for string markers.
  */
 export function msgpackToJson(base64String: string): string {
   try {
@@ -65,8 +47,8 @@ export function msgpackToJson(base64String: string): string {
     // Decode msgpack with float detection
     const wrappedData = msgPackEncoder.decode(bytes);
 
-    // Convert to pretty JSON with float preservation
-    return stringifyWithFloats(wrappedData);
+    // Convert to pretty JSON - DecodedFloat64's toJSON() handles float formatting
+    return JSONBigNative.stringify(wrappedData, null, 2);
   } catch (error) {
     const message = getErrorMessage(error);
     throw new Error(`Failed to convert msgpack to JSON: ${message}`);

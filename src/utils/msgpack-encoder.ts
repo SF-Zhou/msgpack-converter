@@ -20,11 +20,27 @@ export class Float64 {
 /**
  * Wrapper class to mark a decoded float64 value.
  * This allows us to distinguish float64 values from integers when serializing to JSON.
+ * 
+ * The class mimics BigNumber by setting _isBigNumber = true, which allows json-bigint
+ * to output the toJSON() result without quotes. This avoids using string markers
+ * that could conflict with user data.
  */
 export class DecodedFloat64 {
   value: number;
+  // This property makes json-bigint recognize this as a BigNumber-like object
+  // and output the toJSON() result unquoted
+  _isBigNumber: boolean = true;
+
   constructor(value: number) {
     this.value = value;
+  }
+
+  /**
+   * Returns the string representation for JSON serialization.
+   * Adds .0 suffix to whole numbers to preserve float type information.
+   */
+  toJSON(): string {
+    return Number.isInteger(this.value) ? `${this.value}.0` : String(this.value);
   }
 }
 
