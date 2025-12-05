@@ -1,4 +1,4 @@
-import { Encoder, decode } from '@msgpack/msgpack';
+import { Encoder, Decoder } from '@msgpack/msgpack';
 import { parse as losslessParse, isLosslessNumber, LosslessNumber } from 'lossless-json';
 
 // Maximum value that can be encoded as uint32 in msgpack
@@ -59,11 +59,43 @@ function createFloat64Encoder(): Encoder {
 }
 
 /**
+ * Create a custom decoder that wraps float32/float64 values in DecodedFloat64.
+ * We monkey-patch the readF32 and readF64 methods to intercept float values
+ * and wrap them in DecodedFloat64 for later identification during JSON serialization.
+ */
+function createFloat64Decoder(): Decoder {
+  const decoder = new Decoder({ useBigInt64: true });
+
+  // Store reference to original readF32 and readF64
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const originalReadF32 = (decoder as any).readF32.bind(decoder);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const originalReadF64 = (decoder as any).readF64.bind(decoder);
+
+  // Override readF32 to wrap result in DecodedFloat64
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (decoder as any).readF32 = function (): DecodedFloat64 {
+    const value = originalReadF32();
+    return new DecodedFloat64(value);
+  };
+
+  // Override readF64 to wrap result in DecodedFloat64
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (decoder as any).readF64 = function (): DecodedFloat64 {
+    const value = originalReadF64();
+    return new DecodedFloat64(value);
+  };
+
+  return decoder;
+}
+
+/**
  * MsgPackEncoder provides clean encoding and decoding of MessagePack data
  * with proper handling of float64 values and BigInt.
  */
 export class MsgPackEncoder {
   private encoder = createFloat64Encoder();
+  private decoder = createFloat64Decoder();
 
   /**
    * Check if a LosslessNumber represents a float (has decimal point or exponent).
@@ -187,471 +219,12 @@ export class MsgPackEncoder {
   }
 
   /**
-   * Read a string value from msgpack data at the given position.
-   * Returns the string value and the end position.
-   */
-  private readMsgpackString(data: Uint8Array, pos: number): { value: string; endPos: number } {
-    const byte = data[pos];
-
-    // fixstr (0xa0 - 0xbf)
-    if (byte >= 0xa0 && byte <= 0xbf) {
-      const length = byte & 0x1f;
-      const strBytes = data.slice(pos + 1, pos + 1 + length);
-      return { value: new TextDecoder().decode(strBytes), endPos: pos + 1 + length };
-    }
-
-    // str 8 (0xd9)
-    if (byte === 0xd9) {
-      const length = data[pos + 1];
-      const strBytes = data.slice(pos + 2, pos + 2 + length);
-      return { value: new TextDecoder().decode(strBytes), endPos: pos + 2 + length };
-    }
-
-    // str 16 (0xda)
-    if (byte === 0xda) {
-      const length = (data[pos + 1] << 8) | data[pos + 2];
-      const strBytes = data.slice(pos + 3, pos + 3 + length);
-      return { value: new TextDecoder().decode(strBytes), endPos: pos + 3 + length };
-    }
-
-    // str 32 (0xdb)
-    if (byte === 0xdb) {
-      const length =
-        ((data[pos + 1] << 24) | (data[pos + 2] << 16) | (data[pos + 3] << 8) | data[pos + 4]) >>> 0;
-      const strBytes = data.slice(pos + 5, pos + 5 + length);
-      return { value: new TextDecoder().decode(strBytes), endPos: pos + 5 + length };
-    }
-
-    // Not a string, return empty
-    return { value: '', endPos: pos };
-  }
-
-  /**
-   * Skip a msgpack value and return the end position.
-   */
-  private skipMsgpackValue(data: Uint8Array, pos: number): number {
-    const byte = data[pos];
-
-    // Positive fixint (0x00 - 0x7f)
-    if (byte <= 0x7f) return pos + 1;
-    // Negative fixint (0xe0 - 0xff)
-    if (byte >= 0xe0) return pos + 1;
-
-    // fixmap (0x80 - 0x8f)
-    if (byte >= 0x80 && byte <= 0x8f) {
-      const count = byte & 0x0f;
-      let currentPos = pos + 1;
-      for (let i = 0; i < count; i++) {
-        currentPos = this.skipMsgpackValue(data, currentPos); // key
-        currentPos = this.skipMsgpackValue(data, currentPos); // value
-      }
-      return currentPos;
-    }
-
-    // fixarray (0x90 - 0x9f)
-    if (byte >= 0x90 && byte <= 0x9f) {
-      const count = byte & 0x0f;
-      let currentPos = pos + 1;
-      for (let i = 0; i < count; i++) {
-        currentPos = this.skipMsgpackValue(data, currentPos);
-      }
-      return currentPos;
-    }
-
-    // fixstr (0xa0 - 0xbf)
-    if (byte >= 0xa0 && byte <= 0xbf) {
-      const length = byte & 0x1f;
-      return pos + 1 + length;
-    }
-
-    // nil (0xc0)
-    if (byte === 0xc0) return pos + 1;
-    // false (0xc2)
-    if (byte === 0xc2) return pos + 1;
-    // true (0xc3)
-    if (byte === 0xc3) return pos + 1;
-
-    // bin 8 (0xc4)
-    if (byte === 0xc4) return pos + 2 + data[pos + 1];
-    // bin 16 (0xc5)
-    if (byte === 0xc5) return pos + 3 + ((data[pos + 1] << 8) | data[pos + 2]);
-    // bin 32 (0xc6)
-    if (byte === 0xc6) {
-      const length =
-        ((data[pos + 1] << 24) | (data[pos + 2] << 16) | (data[pos + 3] << 8) | data[pos + 4]) >>> 0;
-      return pos + 5 + length;
-    }
-
-    // float 32 (0xca)
-    if (byte === 0xca) return pos + 5;
-    // float 64 (0xcb)
-    if (byte === 0xcb) return pos + 9;
-    // uint 8 (0xcc)
-    if (byte === 0xcc) return pos + 2;
-    // uint 16 (0xcd)
-    if (byte === 0xcd) return pos + 3;
-    // uint 32 (0xce)
-    if (byte === 0xce) return pos + 5;
-    // uint 64 (0xcf)
-    if (byte === 0xcf) return pos + 9;
-    // int 8 (0xd0)
-    if (byte === 0xd0) return pos + 2;
-    // int 16 (0xd1)
-    if (byte === 0xd1) return pos + 3;
-    // int 32 (0xd2)
-    if (byte === 0xd2) return pos + 5;
-    // int 64 (0xd3)
-    if (byte === 0xd3) return pos + 9;
-
-    // str 8 (0xd9)
-    if (byte === 0xd9) return pos + 2 + data[pos + 1];
-    // str 16 (0xda)
-    if (byte === 0xda) return pos + 3 + ((data[pos + 1] << 8) | data[pos + 2]);
-    // str 32 (0xdb)
-    if (byte === 0xdb) {
-      const length =
-        ((data[pos + 1] << 24) | (data[pos + 2] << 16) | (data[pos + 3] << 8) | data[pos + 4]) >>> 0;
-      return pos + 5 + length;
-    }
-
-    // array 16 (0xdc)
-    if (byte === 0xdc) {
-      const count = (data[pos + 1] << 8) | data[pos + 2];
-      let currentPos = pos + 3;
-      for (let i = 0; i < count; i++) {
-        currentPos = this.skipMsgpackValue(data, currentPos);
-      }
-      return currentPos;
-    }
-
-    // array 32 (0xdd)
-    if (byte === 0xdd) {
-      const count =
-        ((data[pos + 1] << 24) | (data[pos + 2] << 16) | (data[pos + 3] << 8) | data[pos + 4]) >>> 0;
-      let currentPos = pos + 5;
-      for (let i = 0; i < count; i++) {
-        currentPos = this.skipMsgpackValue(data, currentPos);
-      }
-      return currentPos;
-    }
-
-    // map 16 (0xde)
-    if (byte === 0xde) {
-      const count = (data[pos + 1] << 8) | data[pos + 2];
-      let currentPos = pos + 3;
-      for (let i = 0; i < count; i++) {
-        currentPos = this.skipMsgpackValue(data, currentPos); // key
-        currentPos = this.skipMsgpackValue(data, currentPos); // value
-      }
-      return currentPos;
-    }
-
-    // map 32 (0xdf)
-    if (byte === 0xdf) {
-      const count =
-        ((data[pos + 1] << 24) | (data[pos + 2] << 16) | (data[pos + 3] << 8) | data[pos + 4]) >>> 0;
-      let currentPos = pos + 5;
-      for (let i = 0; i < count; i++) {
-        currentPos = this.skipMsgpackValue(data, currentPos); // key
-        currentPos = this.skipMsgpackValue(data, currentPos); // value
-      }
-      return currentPos;
-    }
-
-    // Default - skip 1 byte
-    return pos + 1;
-  }
-
-  /**
-   * Scan msgpack bytes and collect paths to float64/float32 values.
-   * Returns a set of JSON path strings that contain float values.
-   */
-  scanFloat64Paths(
-    data: Uint8Array,
-    pos: number = 0,
-    path: string = ''
-  ): { paths: Set<string>; endPos: number } {
-    const paths = new Set<string>();
-    const byte = data[pos];
-
-    // Positive fixint (0x00 - 0x7f)
-    if (byte <= 0x7f) {
-      return { paths, endPos: pos + 1 };
-    }
-
-    // Negative fixint (0xe0 - 0xff)
-    if (byte >= 0xe0) {
-      return { paths, endPos: pos + 1 };
-    }
-
-    // fixmap (0x80 - 0x8f)
-    if (byte >= 0x80 && byte <= 0x8f) {
-      const count = byte & 0x0f;
-      let currentPos = pos + 1;
-      for (let i = 0; i < count; i++) {
-        // Read key (usually a string)
-        const keyStartPos = currentPos;
-        const { value: keyStr, endPos: keyEndPos } = this.readMsgpackString(data, currentPos);
-        if (keyEndPos === keyStartPos) {
-          // Key is not a string, skip it
-          currentPos = this.skipMsgpackValue(data, currentPos);
-        } else {
-          currentPos = keyEndPos;
-        }
-        // Get value
-        const valuePath = path ? `${path}.${keyStr || `[${i}]`}` : keyStr || `[${i}]`;
-        const valueResult = this.scanFloat64Paths(data, currentPos, valuePath);
-        valueResult.paths.forEach((p) => paths.add(p));
-        currentPos = valueResult.endPos;
-      }
-      return { paths, endPos: currentPos };
-    }
-
-    // fixarray (0x90 - 0x9f)
-    if (byte >= 0x90 && byte <= 0x9f) {
-      const count = byte & 0x0f;
-      let currentPos = pos + 1;
-      for (let i = 0; i < count; i++) {
-        const itemPath = `${path}[${i}]`;
-        const result = this.scanFloat64Paths(data, currentPos, itemPath);
-        result.paths.forEach((p) => paths.add(p));
-        currentPos = result.endPos;
-      }
-      return { paths, endPos: currentPos };
-    }
-
-    // fixstr (0xa0 - 0xbf)
-    if (byte >= 0xa0 && byte <= 0xbf) {
-      const length = byte & 0x1f;
-      return { paths, endPos: pos + 1 + length };
-    }
-
-    // nil (0xc0)
-    if (byte === 0xc0) {
-      return { paths, endPos: pos + 1 };
-    }
-
-    // false (0xc2)
-    if (byte === 0xc2) {
-      return { paths, endPos: pos + 1 };
-    }
-
-    // true (0xc3)
-    if (byte === 0xc3) {
-      return { paths, endPos: pos + 1 };
-    }
-
-    // bin 8 (0xc4)
-    if (byte === 0xc4) {
-      const length = data[pos + 1];
-      return { paths, endPos: pos + 2 + length };
-    }
-
-    // bin 16 (0xc5)
-    if (byte === 0xc5) {
-      const length = (data[pos + 1] << 8) | data[pos + 2];
-      return { paths, endPos: pos + 3 + length };
-    }
-
-    // bin 32 (0xc6)
-    if (byte === 0xc6) {
-      const length =
-        ((data[pos + 1] << 24) | (data[pos + 2] << 16) | (data[pos + 3] << 8) | data[pos + 4]) >>> 0;
-      return { paths, endPos: pos + 5 + length };
-    }
-
-    // float 32 (0xca)
-    if (byte === 0xca) {
-      paths.add(path);
-      return { paths, endPos: pos + 5 };
-    }
-
-    // float 64 (0xcb)
-    if (byte === 0xcb) {
-      paths.add(path);
-      return { paths, endPos: pos + 9 };
-    }
-
-    // uint 8 (0xcc)
-    if (byte === 0xcc) {
-      return { paths, endPos: pos + 2 };
-    }
-
-    // uint 16 (0xcd)
-    if (byte === 0xcd) {
-      return { paths, endPos: pos + 3 };
-    }
-
-    // uint 32 (0xce)
-    if (byte === 0xce) {
-      return { paths, endPos: pos + 5 };
-    }
-
-    // uint 64 (0xcf)
-    if (byte === 0xcf) {
-      return { paths, endPos: pos + 9 };
-    }
-
-    // int 8 (0xd0)
-    if (byte === 0xd0) {
-      return { paths, endPos: pos + 2 };
-    }
-
-    // int 16 (0xd1)
-    if (byte === 0xd1) {
-      return { paths, endPos: pos + 3 };
-    }
-
-    // int 32 (0xd2)
-    if (byte === 0xd2) {
-      return { paths, endPos: pos + 5 };
-    }
-
-    // int 64 (0xd3)
-    if (byte === 0xd3) {
-      return { paths, endPos: pos + 9 };
-    }
-
-    // str 8 (0xd9)
-    if (byte === 0xd9) {
-      const length = data[pos + 1];
-      return { paths, endPos: pos + 2 + length };
-    }
-
-    // str 16 (0xda)
-    if (byte === 0xda) {
-      const length = (data[pos + 1] << 8) | data[pos + 2];
-      return { paths, endPos: pos + 3 + length };
-    }
-
-    // str 32 (0xdb)
-    if (byte === 0xdb) {
-      const length =
-        ((data[pos + 1] << 24) | (data[pos + 2] << 16) | (data[pos + 3] << 8) | data[pos + 4]) >>> 0;
-      return { paths, endPos: pos + 5 + length };
-    }
-
-    // array 16 (0xdc)
-    if (byte === 0xdc) {
-      const count = (data[pos + 1] << 8) | data[pos + 2];
-      let currentPos = pos + 3;
-      for (let i = 0; i < count; i++) {
-        const itemPath = `${path}[${i}]`;
-        const result = this.scanFloat64Paths(data, currentPos, itemPath);
-        result.paths.forEach((p) => paths.add(p));
-        currentPos = result.endPos;
-      }
-      return { paths, endPos: currentPos };
-    }
-
-    // array 32 (0xdd)
-    if (byte === 0xdd) {
-      const count =
-        ((data[pos + 1] << 24) | (data[pos + 2] << 16) | (data[pos + 3] << 8) | data[pos + 4]) >>> 0;
-      let currentPos = pos + 5;
-      for (let i = 0; i < count; i++) {
-        const itemPath = `${path}[${i}]`;
-        const result = this.scanFloat64Paths(data, currentPos, itemPath);
-        result.paths.forEach((p) => paths.add(p));
-        currentPos = result.endPos;
-      }
-      return { paths, endPos: currentPos };
-    }
-
-    // map 16 (0xde)
-    if (byte === 0xde) {
-      const count = (data[pos + 1] << 8) | data[pos + 2];
-      let currentPos = pos + 3;
-      for (let i = 0; i < count; i++) {
-        // Read key
-        const { value: keyStr, endPos: keyEndPos } = this.readMsgpackString(data, currentPos);
-        if (keyEndPos === currentPos) {
-          currentPos = this.skipMsgpackValue(data, currentPos);
-        } else {
-          currentPos = keyEndPos;
-        }
-        // Get value
-        const valuePath = path ? `${path}.${keyStr || `[${i}]`}` : keyStr || `[${i}]`;
-        const valueResult = this.scanFloat64Paths(data, currentPos, valuePath);
-        valueResult.paths.forEach((p) => paths.add(p));
-        currentPos = valueResult.endPos;
-      }
-      return { paths, endPos: currentPos };
-    }
-
-    // map 32 (0xdf)
-    if (byte === 0xdf) {
-      const count =
-        ((data[pos + 1] << 24) | (data[pos + 2] << 16) | (data[pos + 3] << 8) | data[pos + 4]) >>> 0;
-      let currentPos = pos + 5;
-      for (let i = 0; i < count; i++) {
-        // Read key
-        const { value: keyStr, endPos: keyEndPos } = this.readMsgpackString(data, currentPos);
-        if (keyEndPos === currentPos) {
-          currentPos = this.skipMsgpackValue(data, currentPos);
-        } else {
-          currentPos = keyEndPos;
-        }
-        // Get value
-        const valuePath = path ? `${path}.${keyStr || `[${i}]`}` : keyStr || `[${i}]`;
-        const valueResult = this.scanFloat64Paths(data, currentPos, valuePath);
-        valueResult.paths.forEach((p) => paths.add(p));
-        currentPos = valueResult.endPos;
-      }
-      return { paths, endPos: currentPos };
-    }
-
-    // Default - skip unknown byte
-    return { paths, endPos: pos + 1 };
-  }
-
-  /**
-   * Recursively wrap float64 values in DecodedFloat64 based on the paths.
-   */
-  wrapFloat64Values(
-    value: unknown,
-    float64Paths: Set<string>,
-    currentPath: string = ''
-  ): unknown {
-    if (value === null || value === undefined) {
-      return value;
-    }
-
-    // Check if this path is a float64
-    if (typeof value === 'number' && float64Paths.has(currentPath)) {
-      return new DecodedFloat64(value);
-    }
-
-    // Handle arrays
-    if (Array.isArray(value)) {
-      return value.map((item, index) => this.wrapFloat64Values(item, float64Paths, `${currentPath}[${index}]`));
-    }
-
-    // Handle objects
-    if (typeof value === 'object') {
-      const result: Record<string, unknown> = {};
-      for (const [key, val] of Object.entries(value)) {
-        const newPath = currentPath ? `${currentPath}.${key}` : key;
-        result[key] = this.wrapFloat64Values(val, float64Paths, newPath);
-      }
-      return result;
-    }
-
-    return value;
-  }
-
-  /**
-   * Decode msgpack bytes to a value with float64 values wrapped.
+   * Decode msgpack bytes to a value with float64 values wrapped in DecodedFloat64.
+   * Uses a custom decoder that intercepts readF32/readF64 to wrap float values.
    */
   decode(bytes: Uint8Array): unknown {
-    // Scan for float64 paths before decoding
-    const { paths: float64Paths } = this.scanFloat64Paths(bytes);
-
-    // Decode msgpack using the library
-    const data = decode(bytes, { useBigInt64: true });
-
-    // Wrap float64 values
-    return this.wrapFloat64Values(data, float64Paths);
+    // Decode using our custom decoder that wraps float values in DecodedFloat64
+    return this.decoder.decode(bytes);
   }
 }
 
