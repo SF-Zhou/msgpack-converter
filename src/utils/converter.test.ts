@@ -260,6 +260,77 @@ describe('converter utilities', () => {
     });
   });
 
+  describe('float encoding', () => {
+    it('should encode 1.0 as float64, not as integer', () => {
+      // When JSON contains "1.0", it should be encoded as float64 (0xcb)
+      // not as fixint (0x01)
+      const json = '{"A": 1.0, "B": 123}';
+      const msgpack = jsonToMsgpack(json);
+      
+      // Should have float64 marker for 1.0
+      expect(hasMsgpackMarker(msgpack, MSGPACK_FLOAT64)).toBe(true);
+      
+      // Verify roundtrip works
+      const backToJson = msgpackToJson(msgpack);
+      expect(JSON.parse(backToJson)).toEqual({ A: 1, B: 123 });
+    });
+
+    it('should encode 0.0 as float64, not as integer', () => {
+      const json = '{"value": 0.0}';
+      const msgpack = jsonToMsgpack(json);
+      
+      // Should have float64 marker for 0.0
+      expect(hasMsgpackMarker(msgpack, MSGPACK_FLOAT64)).toBe(true);
+    });
+
+    it('should encode numbers with exponents as float64', () => {
+      const json = '{"value": 1e5}';
+      const msgpack = jsonToMsgpack(json);
+      
+      // Should have float64 marker for 1e5
+      expect(hasMsgpackMarker(msgpack, MSGPACK_FLOAT64)).toBe(true);
+      
+      // Verify roundtrip
+      const backToJson = msgpackToJson(msgpack);
+      expect(JSON.parse(backToJson)).toEqual({ value: 100000 });
+    });
+
+    it('should preserve integer encoding for regular integers', () => {
+      const json = '{"value": 123}';
+      const msgpack = jsonToMsgpack(json);
+      
+      // Should NOT have float64 marker for 123
+      expect(hasMsgpackMarker(msgpack, MSGPACK_FLOAT64)).toBe(false);
+    });
+
+    it('should handle mixed floats and integers correctly', () => {
+      const json = '{"A": 1.0, "B": false, "C": true}';
+      const msgpack = jsonToMsgpack(json);
+      
+      // Should have float64 marker for 1.0
+      expect(hasMsgpackMarker(msgpack, MSGPACK_FLOAT64)).toBe(true);
+      
+      // Verify roundtrip
+      const backToJson = msgpackToJson(msgpack);
+      const parsed = JSON.parse(backToJson);
+      expect(parsed.A).toBe(1);
+      expect(parsed.B).toBe(false);
+      expect(parsed.C).toBe(true);
+    });
+
+    it('should encode actual decimals like 1.5 as float64', () => {
+      const json = '{"value": 1.5}';
+      const msgpack = jsonToMsgpack(json);
+      
+      // Should have float64 marker
+      expect(hasMsgpackMarker(msgpack, MSGPACK_FLOAT64)).toBe(true);
+      
+      // Verify roundtrip preserves the decimal
+      const backToJson = msgpackToJson(msgpack);
+      expect(JSON.parse(backToJson)).toEqual({ value: 1.5 });
+    });
+  });
+
   describe('error messages', () => {
     it('should provide descriptive error for invalid JSON syntax', () => {
       // The error message varies based on json-bigint parsing, but should contain something descriptive
@@ -268,7 +339,8 @@ describe('converter utilities', () => {
       );
       
       // Verify it contains a descriptive error, not "Unknown error"
-      expect(() => jsonToMsgpack('not valid json')).toThrow(/Expected/);
+      // lossless-json uses "JSON value expected" format
+      expect(() => jsonToMsgpack('not valid json')).toThrow(/JSON value expected|Expected/);
       expect(() => jsonToMsgpack('not valid json')).not.toThrow(/Unknown error/);
     });
 

@@ -1,55 +1,11 @@
-import { encode, decode, ExtensionCodec } from '@msgpack/msgpack';
 import JSONBig from 'json-bigint';
+import { msgPackEncoder } from './msgpack-encoder';
 
 // Create a custom JSON parser that uses BigInt for large integers
 // useNativeBigInt: true uses native BigInt for values exceeding safe integer limits
 // Without alwaysParseAsBig, small integers remain as regular numbers, allowing
 // msgpack to use compact encodings (fixint, uint8, etc.) instead of uint64
 const JSONBigNative = JSONBig({ useNativeBigInt: true });
-
-// Extension codec to handle BigInt in msgpack
-const extensionCodec = new ExtensionCodec();
-
-// Maximum value that can be encoded as uint32 in msgpack
-const UINT32_MAX = 0xffffffff;
-// Minimum value that can be encoded as int32 in msgpack
-const INT32_MIN = -2147483648;
-
-/**
- * Recursively transform integers that exceed 32-bit range to BigInt.
- * This ensures they are encoded as int64/uint64 in msgpack instead of float64.
- * Small integers remain as Numbers for compact msgpack encoding.
- */
-function transformLargeIntegers(value: unknown): unknown {
-  if (value === null || value === undefined) {
-    return value;
-  }
-
-  // Convert Numbers that exceed 32-bit integer range to BigInt
-  if (typeof value === 'number' && Number.isInteger(value)) {
-    if (value > UINT32_MAX || value < INT32_MIN) {
-      return BigInt(value);
-    }
-    return value;
-  }
-
-  // Recursively process arrays
-  if (Array.isArray(value)) {
-    return value.map(transformLargeIntegers);
-  }
-
-  // Recursively process objects
-  if (typeof value === 'object') {
-    const result: Record<string, unknown> = {};
-    for (const [key, val] of Object.entries(value)) {
-      result[key] = transformLargeIntegers(val);
-    }
-    return result;
-  }
-
-  // Return other types as-is (strings, booleans, BigInt, etc.)
-  return value;
-}
 
 /**
  * Extract error message from various error types
@@ -74,6 +30,10 @@ function getErrorMessage(error: unknown): string {
 /**
  * Convert Base64-encoded msgpack data to pretty JSON string
  * Supports uint64 values by using BigInt and json-bigint
+ * Preserves float representation by adding .0 suffix to whole number floats
+ * 
+ * DecodedFloat64 objects have _isBigNumber = true which makes json-bigint
+ * output their toJSON() result unquoted, avoiding the need for string markers.
  */
 export function msgpackToJson(base64String: string): string {
   try {
@@ -84,11 +44,11 @@ export function msgpackToJson(base64String: string): string {
       bytes[i] = binaryString.charCodeAt(i);
     }
 
-    // Decode msgpack
-    const data = decode(bytes, { extensionCodec, useBigInt64: true });
+    // Decode msgpack with float detection
+    const wrappedData = msgPackEncoder.decode(bytes);
 
-    // Convert to pretty JSON with BigInt support
-    return JSONBigNative.stringify(data, null, 2);
+    // Convert to pretty JSON - DecodedFloat64's toJSON() handles float formatting
+    return JSONBigNative.stringify(wrappedData, null, 2);
   } catch (error) {
     const message = getErrorMessage(error);
     throw new Error(`Failed to convert msgpack to JSON: ${message}`);
@@ -98,18 +58,15 @@ export function msgpackToJson(base64String: string): string {
 /**
  * Convert JSON string to Base64-encoded msgpack data
  * Supports uint64 values via json-bigint
+ * Preserves float representation for numbers written with decimal points or exponents
  */
 export function jsonToMsgpack(jsonString: string): string {
   try {
-    // Parse JSON with BigInt support
-    const parsed = JSONBigNative.parse(jsonString);
+    // Parse JSON with float detection to preserve float representation
+    const data = msgPackEncoder.parseJsonWithFloats(jsonString);
 
-    // Transform integers exceeding 32-bit range to BigInt to ensure they are
-    // encoded as int64/uint64 in msgpack instead of float64
-    const data = transformLargeIntegers(parsed);
-
-    // Encode to msgpack
-    const encoded = encode(data, { extensionCodec, useBigInt64: true });
+    // Encode to msgpack with custom encoder that handles Float64
+    const encoded = msgPackEncoder.encode(data);
 
     // Convert to base64
     const binaryString = Array.from(encoded)
@@ -169,25 +126,25 @@ export function base64ToHex(base64String: string): string {
 export function hexToBase64(hexString: string): string {
   // Remove all whitespace and normalize
   const cleanHex = hexString.replace(/\s+/g, '');
-  
+
   if (cleanHex.length === 0) {
     return '';
   }
-  
+
   if (cleanHex.length % 2 !== 0) {
     throw new Error('Hex string must have an even number of characters');
   }
-  
+
   if (!/^[0-9a-fA-F]*$/.test(cleanHex)) {
     throw new Error('Invalid hex characters');
   }
-  
+
   let binaryString = '';
   for (let i = 0; i < cleanHex.length; i += 2) {
     const byte = parseInt(cleanHex.substring(i, i + 2), 16);
     binaryString += String.fromCharCode(byte);
   }
-  
+
   return btoa(binaryString);
 }
 

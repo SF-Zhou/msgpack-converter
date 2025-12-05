@@ -1,4 +1,4 @@
-import { useRef, useEffect, useState, useMemo } from 'react';
+import { useRef, useEffect, useState, useMemo, useCallback } from 'react';
 import Prism from 'prismjs';
 import 'prismjs/components/prism-json';
 import './JsonHighlighter.css';
@@ -8,9 +8,16 @@ interface JsonHighlighterProps {
   onChange: (value: string) => void;
   placeholder?: string;
   id?: string;
+  onSelectionChange?: (selStart: number, selEnd: number) => void;
 }
 
-export function JsonHighlighter({ value, onChange, placeholder, id }: JsonHighlighterProps) {
+export function JsonHighlighter({
+  value,
+  onChange,
+  placeholder,
+  id,
+  onSelectionChange,
+}: JsonHighlighterProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const highlightRef = useRef<HTMLPreElement>(null);
   const [scrollTop, setScrollTop] = useState(0);
@@ -33,12 +40,20 @@ export function JsonHighlighter({ value, onChange, placeholder, id }: JsonHighli
   }, [value]);
 
   // Sync scroll between textarea and highlight overlay
-  const handleScroll = () => {
+  const handleScroll = useCallback(() => {
     if (textareaRef.current) {
       setScrollTop(textareaRef.current.scrollTop);
       setScrollLeft(textareaRef.current.scrollLeft);
     }
-  };
+  }, []);
+
+  // Handle selection changes
+  const handleSelect = useCallback(() => {
+    if (textareaRef.current && onSelectionChange) {
+      const { selectionStart, selectionEnd } = textareaRef.current;
+      onSelectionChange(selectionStart, selectionEnd);
+    }
+  }, [onSelectionChange]);
 
   useEffect(() => {
     if (highlightRef.current) {
@@ -49,12 +64,8 @@ export function JsonHighlighter({ value, onChange, placeholder, id }: JsonHighli
 
   return (
     <div className="json-highlighter-container">
-      <pre
-        ref={highlightRef}
-        className="json-highlight-overlay"
-        aria-hidden="true"
-      >
-        <code 
+      <pre ref={highlightRef} className="json-highlight-overlay" aria-hidden="true">
+        <code
           className="language-json"
           dangerouslySetInnerHTML={{ __html: highlightedHtml + (value.endsWith('\n') ? ' ' : '') }}
         />
@@ -66,6 +77,9 @@ export function JsonHighlighter({ value, onChange, placeholder, id }: JsonHighli
         value={value}
         onChange={(e) => onChange(e.target.value)}
         onScroll={handleScroll}
+        onSelect={handleSelect}
+        onMouseUp={handleSelect}
+        onKeyUp={handleSelect}
         placeholder={placeholder}
         spellCheck={false}
       />
