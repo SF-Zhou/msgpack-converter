@@ -1,13 +1,10 @@
-import { encode, decode, ExtensionCodec } from '@msgpack/msgpack';
+import { Encoder, decode } from '@msgpack/msgpack';
 import { parse as losslessParse, isLosslessNumber, LosslessNumber } from 'lossless-json';
 
 // Maximum value that can be encoded as uint32 in msgpack
 const UINT32_MAX = 0xffffffff;
 // Minimum value that can be encoded as int32 in msgpack
 const INT32_MIN = -2147483648;
-
-// Extension type for Float64 (temporary, will be replaced with native float64)
-const FLOAT64_EXT_TYPE = 0x7f; // Use max extension type to avoid conflicts
 
 /**
  * Wrapper class to force a number to be encoded as float64 in msgpack.
@@ -32,60 +29,33 @@ export class DecodedFloat64 {
 }
 
 /**
- * Create an ExtensionCodec that handles Float64 encoding.
- * The encoded extension will be post-processed to native float64 format.
+ * Create a custom encoder that handles Float64 values natively.
+ * We monkey-patch the doEncode method to intercept Float64 objects before
+ * they're processed as regular objects, and encode them directly as float64.
  */
-function createFloat64ExtensionCodec(): ExtensionCodec {
-  const extensionCodec = new ExtensionCodec();
+function createFloat64Encoder(): Encoder {
+  const encoder = new Encoder({ useBigInt64: true });
 
-  extensionCodec.register({
-    type: FLOAT64_EXT_TYPE,
-    encode: (object: unknown): Uint8Array | null => {
-      if (object instanceof Float64) {
-        // Encode the float64 value as 8 bytes big-endian
-        const buffer = new ArrayBuffer(8);
-        const view = new DataView(buffer);
-        view.setFloat64(0, object.value, false); // big-endian
-        return new Uint8Array(buffer);
-      }
-      return null;
-    },
-    decode: (data: Uint8Array): Float64 => {
-      const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
-      return new Float64(view.getFloat64(0, false)); // big-endian
-    },
-  });
+  // Store reference to original doEncode
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const originalDoEncode = (encoder as any).doEncode.bind(encoder);
 
-  return extensionCodec;
-}
-
-/**
- * Replace Float64 extension format with native msgpack float64 format.
- * 
- * Extension format: 0xd7 (fixext 8) + type (1 byte) + data (8 bytes) = 10 bytes
- * Native float64:   0xcb + data (8 bytes) = 9 bytes
- */
-function replaceFloat64Extensions(data: Uint8Array): Uint8Array {
-  const result: number[] = [];
-  let i = 0;
-
-  while (i < data.length) {
-    // Check for fixext 8 (0xd7) followed by our Float64 extension type
-    if (data[i] === 0xd7 && i + 1 < data.length && data[i + 1] === FLOAT64_EXT_TYPE) {
-      // Replace with native float64 format
-      result.push(0xcb); // float64 marker
-      // Copy 8 bytes of float data
-      for (let j = 0; j < 8; j++) {
-        result.push(data[i + 2 + j]);
-      }
-      i += 10; // Skip fixext 8 marker + type + 8 data bytes
-    } else {
-      result.push(data[i]);
-      i++;
+  // Override doEncode to handle Float64 before other types
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (encoder as any).doEncode = function (object: unknown, depth: number): void {
+    if (object instanceof Float64) {
+      // Write native float64 format: 0xcb + 8 bytes big-endian
+      this.ensureBufferSizeToWrite(9);
+      this.writeU8(0xcb); // float64 marker
+      this.writeF64(object.value);
+      return;
     }
-  }
 
-  return new Uint8Array(result);
+    // For all other types, use original doEncode
+    originalDoEncode(object, depth);
+  };
+
+  return encoder;
 }
 
 /**
@@ -93,7 +63,7 @@ function replaceFloat64Extensions(data: Uint8Array): Uint8Array {
  * with proper handling of float64 values and BigInt.
  */
 export class MsgPackEncoder {
-  private extensionCodec = createFloat64ExtensionCodec();
+  private encoder = createFloat64Encoder();
 
   /**
    * Check if a LosslessNumber represents a float (has decimal point or exponent).
@@ -207,20 +177,13 @@ export class MsgPackEncoder {
 
   /**
    * Encode data to msgpack bytes.
-   * Uses the library's encode function with a custom extension codec for Float64.
-   * The extension format is then post-processed to native float64 format.
+   * Uses a custom encoder that handles Float64 wrapper class natively.
    */
   encode(data: unknown): Uint8Array {
     const transformedData = this.transformLargeIntegers(data);
 
-    // Encode using the library with Float64 extension codec
-    const encoded = encode(transformedData, {
-      extensionCodec: this.extensionCodec,
-      useBigInt64: true,
-    });
-
-    // Replace Float64 extensions with native float64 format
-    return replaceFloat64Extensions(encoded);
+    // Encode using our custom encoder that handles Float64 natively
+    return this.encoder.encode(transformedData);
   }
 
   /**
