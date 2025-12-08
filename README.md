@@ -10,7 +10,7 @@ An online tool for converting between Base64-encoded MessagePack and JSON with f
 - 🔢 **Full uint64 Support**: Preserves large integers that exceed JavaScript's safe integer limit (2^53 - 1)
 - 🎨 **Beautiful UI**: Clean, modern interface with dark mode support
 - 📱 **Responsive Design**: Works on desktop and mobile devices
-- ✅ **Unit Tested**: Comprehensive tests ensure uint64 values are preserved correctly
+- 🦀 **Rust Powered**: Built with Rust for reliable type handling and performance
 
 ## Live Demo
 
@@ -20,33 +20,44 @@ Visit [https://sf-zhou.github.io/msgpack-converter/](https://sf-zhou.github.io/m
 
 ### Prerequisites
 
-- Node.js 18 or higher
-- npm
+- Rust (1.70 or higher)
+- Trunk (for building and serving)
 
 ### Setup
 
 ```bash
-# Install dependencies
-npm install
+# Install Rust (if not already installed)
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+
+# Add wasm target
+rustup target add wasm32-unknown-unknown
+
+# Install Trunk
+cargo install trunk
 
 # Start development server
-npm run dev
-
-# Run tests
-npm test
+trunk serve
 
 # Build for production
-npm run build
+trunk build --release
 ```
 
 ### Tech Stack
 
-- **React** - UI framework
-- **TypeScript** - Type safety
-- **Vite** - Build tool
-- **@msgpack/msgpack** - MessagePack encoding/decoding
-- **json-bigint** - JSON parsing with BigInt support
-- **Vitest** - Testing framework
+- **Leptos** - Rust web framework
+- **serde** - Serialization framework
+- **serde_json** - JSON handling with proper integer support
+- **rmp-serde** - MessagePack encoding/decoding
+- **Trunk** - WASM build tool
+
+## Why Rust/Leptos?
+
+The previous JavaScript/TypeScript implementation had limitations with handling large integers and distinguishing between integers and floats during JSON parsing. By using Rust with serde, this implementation:
+
+- Correctly preserves uint64 values without precision loss
+- Properly handles the distinction between integers and floats
+- Provides better type safety and reliability
+- Eliminates JavaScript's Number type limitations
 
 ## License
 
