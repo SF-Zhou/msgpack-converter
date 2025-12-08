@@ -1,6 +1,7 @@
 use leptos::prelude::*;
 use leptos::ev;
 use crate::converter::{msgpack_to_json, json_to_msgpack, base64_to_hex, hex_to_base64};
+use super::{JsonHighlighter, HexHighlighter};
 
 #[component]
 pub fn App() -> impl IntoView {
@@ -10,8 +11,7 @@ pub fn App() -> impl IntoView {
     let (error, set_error) = signal(String::new());
 
     // Handle base64 input change - update hex in real-time
-    let handle_base64_change = move |ev: ev::Event| {
-        let value = event_target_value(&ev);
+    let handle_base64_change = move |value: String| {
         set_msgpack_base64.set(value.clone());
         
         let trimmed = value.trim();
@@ -31,8 +31,7 @@ pub fn App() -> impl IntoView {
     };
 
     // Handle hex input change - update base64 in real-time
-    let handle_hex_change = move |ev: ev::Event| {
-        let value = event_target_value(&ev);
+    let handle_hex_change = move |value: String| {
         set_msgpack_hex.set(value.clone());
         
         let trimmed = value.trim();
@@ -49,6 +48,11 @@ pub fn App() -> impl IntoView {
         } else {
             set_msgpack_base64.set(String::new());
         }
+    };
+
+    // Handle JSON input change
+    let handle_json_change = move |value: String| {
+        set_json_input.set(value);
     };
 
     // Handle MsgPack to JSON conversion
@@ -124,7 +128,7 @@ pub fn App() -> impl IntoView {
                                 id="msgpack-base64-input"
                                 class="input-area msgpack-textarea"
                                 placeholder="Paste Base64-encoded MsgPack data here..."
-                                on:input=handle_base64_change
+                                on:input=move |ev| handle_base64_change(event_target_value(&ev))
                                 prop:value=move || msgpack_base64.get()
                             />
                         </div>
@@ -133,12 +137,10 @@ pub fn App() -> impl IntoView {
                                 <span class="label-icon">"🔢"</span>
                                 "Hex (Space-separated)"
                             </label>
-                            <textarea
-                                id="msgpack-hex-input"
-                                class="input-area msgpack-textarea"
-                                placeholder="Or paste hex bytes here (e.g., 81 A5 68 65 6C 6C 6F)..."
-                                on:input=handle_hex_change
-                                prop:value=move || msgpack_hex.get()
+                            <HexHighlighter
+                                value=msgpack_hex.get()
+                                on_input=handle_hex_change
+                                placeholder="Or paste hex bytes here (e.g., 81 A5 68 65 6C 6C 6F)...".to_string()
                             />
                         </div>
                     </div>
@@ -173,12 +175,10 @@ pub fn App() -> impl IntoView {
                         <span class="label-icon">"📄"</span>
                         "JSON"
                     </label>
-                    <textarea
-                        id="json-input"
-                        class="input-area"
-                        placeholder="Paste JSON data here..."
-                        on:input=move |ev| set_json_input.set(event_target_value(&ev))
-                        prop:value=move || json_input.get()
+                    <JsonHighlighter
+                        value=json_input.get()
+                        on_input=handle_json_change
+                        placeholder="Paste JSON data here...".to_string()
                     />
                 </div>
             </main>

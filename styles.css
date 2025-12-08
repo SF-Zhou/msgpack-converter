@@ -294,3 +294,122 @@ body {
     color: #aaa;
   }
 }
+
+/* JSON and Hex Highlighter Styles */
+.json-highlighter-container,
+.hex-highlighter-container {
+  position: relative;
+  flex: 1;
+  min-height: 300px;
+}
+
+.json-highlight-overlay,
+.hex-highlight-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  margin: 0;
+  padding: 1rem;
+  border: 2px solid transparent;
+  border-radius: 12px;
+  font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  overflow: auto;
+  pointer-events: none;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  background: transparent;
+  color: transparent;
+}
+
+.json-textarea,
+.hex-textarea {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 300px;
+  padding: 1rem;
+  border: 2px solid #e0e0e0;
+  border-radius: 12px;
+  font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  resize: vertical;
+  background: transparent;
+  color: inherit;
+  transition: border-color 0.3s ease, box-shadow 0.3s ease;
+  z-index: 1;
+}
+
+.json-textarea:focus,
+.hex-textarea:focus {
+  outline: none;
+  border-color: #667eea;
+  box-shadow: 0 0 0 4px rgba(102, 126, 234, 0.1);
+}
+
+/* JSON Syntax Highlighting */
+.json-code .token.string {
+  color: #22863a;
+}
+
+.json-code .token.number {
+  color: #005cc5;
+}
+
+.json-code .token.boolean,
+.json-code .token.null {
+  color: #d73a49;
+}
+
+.json-code .token.property {
+  color: #6f42c1;
+}
+
+@media (prefers-color-scheme: dark) {
+  .json-code .token.string {
+    color: #9ecbff;
+  }
+  
+  .json-code .token.number {
+    color: #79b8ff;
+  }
+  
+  .json-code .token.boolean,
+  .json-code .token.null {
+    color: #f97583;
+  }
+  
+  .json-code .token.property {
+    color: #b392f0;
+  }
+}
+
+/* Hex Highlighting */
+.hex-highlight {
+  background-color: rgba(255, 235, 59, 0.4);
+  border-radius: 2px;
+  padding: 0 2px;
+}
+
+@media (prefers-color-scheme: dark) {
+  .hex-highlight {
+    background-color: rgba(255, 235, 59, 0.3);
+  }
+  
+  .json-textarea,
+  .hex-textarea {
+    background-color: #2a2a2a;
+    border-color: #444;
+    color: #eee;
+  }
+  
+  .json-textarea:focus,
+  .hex-textarea:focus {
+    border-color: #667eea;
+    box-shadow: 0 0 0 4px rgba(102, 126, 234, 0.2);
+  }
+}
