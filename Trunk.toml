@@ -1,13 +1,10 @@
 [build]
-target = "wasm32-unknown-unknown"
+dist = "dist"
 public_url = "/msgpack-converter/"
 
 [serve]
 port = 8080
-address = "127.0.0.1"
+addresses = ["127.0.0.1"]
 
 [watch]
 ignore = ["dist", "target"]
-
-[clean]
-dist = "dist"
