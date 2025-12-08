@@ -14,8 +14,9 @@ pub fn App() -> impl IntoView {
         let value = event_target_value(&ev);
         set_msgpack_base64.set(value.clone());
         
-        if !value.trim().is_empty() {
-            match base64_to_hex(&value.trim()) {
+        let trimmed = value.trim();
+        if !trimmed.is_empty() {
+            match base64_to_hex(trimmed) {
                 Ok(hex) => {
                     set_msgpack_hex.set(hex);
                     set_error.set(String::new());
@@ -34,8 +35,9 @@ pub fn App() -> impl IntoView {
         let value = event_target_value(&ev);
         set_msgpack_hex.set(value.clone());
         
-        if !value.trim().is_empty() {
-            match hex_to_base64(&value.trim()) {
+        let trimmed = value.trim();
+        if !trimmed.is_empty() {
+            match hex_to_base64(trimmed) {
                 Ok(base64) => {
                     set_msgpack_base64.set(base64);
                     set_error.set(String::new());
