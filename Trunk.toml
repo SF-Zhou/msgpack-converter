@@ -1,5 +1,6 @@
 [build]
 target = "wasm32-unknown-unknown"
+public_url = "/msgpack-converter/"
 
 [serve]
 port = 8080
