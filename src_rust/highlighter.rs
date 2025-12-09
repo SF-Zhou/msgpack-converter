@@ -1,5 +1,5 @@
-use wasm_bindgen::prelude::*;
 use js_sys::Reflect;
+use wasm_bindgen::prelude::*;
 
 /// Escape HTML special characters to prevent XSS attacks
 pub fn escape_html(s: &str) -> String {
@@ -15,16 +15,18 @@ fn call_prism_highlight(code: &str, grammar: &JsValue, language: &str) -> Option
     let window = web_sys::window()?;
     let prism = Reflect::get(&window, &JsValue::from_str("Prism")).ok()?;
     let highlight_fn = Reflect::get(&prism, &JsValue::from_str("highlight")).ok()?;
-    
+
     let highlight_fn: js_sys::Function = highlight_fn.dyn_into().ok()?;
-    
-    let result = highlight_fn.call3(
-        &prism,
-        &JsValue::from_str(code),
-        grammar,
-        &JsValue::from_str(language),
-    ).ok()?;
-    
+
+    let result = highlight_fn
+        .call3(
+            &prism,
+            &JsValue::from_str(code),
+            grammar,
+            &JsValue::from_str(language),
+        )
+        .ok()?;
+
     result.as_string()
 }
 
@@ -49,7 +51,7 @@ pub fn highlight_json(code: &str) -> String {
             return highlighted;
         }
     }
-    
+
     // Fallback to escaped HTML
     escape_html(code)
 }
@@ -69,7 +71,10 @@ pub fn highlight_hex(code: &str, highlight_range: Option<(usize, usize)>) -> Str
                 let before = escape_html(&code[..char_start]);
                 let highlighted = escape_html(&code[char_start..char_end]);
                 let after = escape_html(&code[char_end..]);
-                format!(r#"{}<span class="hex-highlight">{}</span>{}"#, before, highlighted, after)
+                format!(
+                    r#"{}<span class="hex-highlight">{}</span>{}"#,
+                    before, highlighted, after
+                )
             }
         }
         None => escape_html(code),

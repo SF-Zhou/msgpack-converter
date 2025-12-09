@@ -31,15 +31,21 @@ fn safe_array<const N: usize>(data: &[u8], start: usize) -> Result<[u8; N], Stri
     if start + N > data.len() {
         return Err(format!(
             "Truncated data: expected {} bytes at position {}, but only {} bytes available",
-            N, start, data.len().saturating_sub(start)
+            N,
+            start,
+            data.len().saturating_sub(start)
         ));
     }
-    data[start..start + N].try_into().map_err(|_| "Failed to convert slice to array".to_string())
+    data[start..start + N]
+        .try_into()
+        .map_err(|_| "Failed to convert slice to array".to_string())
 }
 
 /// Safely get a byte at a position with bounds checking.
 fn safe_byte(data: &[u8], pos: usize) -> Result<u8, String> {
-    data.get(pos).copied().ok_or_else(|| format!("Unexpected end of data at position {}", pos))
+    data.get(pos)
+        .copied()
+        .ok_or_else(|| format!("Unexpected end of data at position {}", pos))
 }
 
 /// Skip whitespace characters in a JSON string starting from a given position.
@@ -343,7 +349,10 @@ fn parse_msgpack_value(data: &[u8], pos: usize) -> Result<(serde_json::Value, us
         return Ok((serde_json::Value::Null, pos + 5 + length));
     }
 
-    Err(format!("Unknown msgpack format byte: 0x{:02x} at position {}", byte, pos))
+    Err(format!(
+        "Unknown msgpack format byte: 0x{:02x} at position {}",
+        byte, pos
+    ))
 }
 
 /// Build position mappings between msgpack bytes and JSON text positions.
@@ -425,8 +434,13 @@ fn build_mappings(
             current_json_pos = skip_whitespace_and_delimiters(json_string, current_json_pos, ":");
 
             // Parse value recursively
-            let (value_hex_end, value_json_end) =
-                build_mappings(data, json_string, mappings, current_hex_pos, current_json_pos)?;
+            let (value_hex_end, value_json_end) = build_mappings(
+                data,
+                json_string,
+                mappings,
+                current_hex_pos,
+                current_json_pos,
+            )?;
             current_hex_pos = value_hex_end;
             current_json_pos = value_json_end;
         }
@@ -450,8 +464,13 @@ fn build_mappings(
 
         for _ in 0..count {
             current_json_pos = skip_whitespace_and_delimiters(json_string, current_json_pos, ",");
-            let (value_hex_end, value_json_end) =
-                build_mappings(data, json_string, mappings, current_hex_pos, current_json_pos)?;
+            let (value_hex_end, value_json_end) = build_mappings(
+                data,
+                json_string,
+                mappings,
+                current_hex_pos,
+                current_json_pos,
+            )?;
             current_hex_pos = value_hex_end;
             current_json_pos = value_json_end;
         }
@@ -760,8 +779,13 @@ fn build_mappings(
 
         for _ in 0..count {
             current_json_pos = skip_whitespace_and_delimiters(json_string, current_json_pos, ",");
-            let (value_hex_end, value_json_end) =
-                build_mappings(data, json_string, mappings, current_hex_pos, current_json_pos)?;
+            let (value_hex_end, value_json_end) = build_mappings(
+                data,
+                json_string,
+                mappings,
+                current_hex_pos,
+                current_json_pos,
+            )?;
             current_hex_pos = value_hex_end;
             current_json_pos = value_json_end;
         }
@@ -786,8 +810,13 @@ fn build_mappings(
 
         for _ in 0..count {
             current_json_pos = skip_whitespace_and_delimiters(json_string, current_json_pos, ",");
-            let (value_hex_end, value_json_end) =
-                build_mappings(data, json_string, mappings, current_hex_pos, current_json_pos)?;
+            let (value_hex_end, value_json_end) = build_mappings(
+                data,
+                json_string,
+                mappings,
+                current_hex_pos,
+                current_json_pos,
+            )?;
             current_hex_pos = value_hex_end;
             current_json_pos = value_json_end;
         }
@@ -832,8 +861,13 @@ fn build_mappings(
 
             current_json_pos = skip_whitespace_and_delimiters(json_string, current_json_pos, ":");
 
-            let (value_hex_end, value_json_end) =
-                build_mappings(data, json_string, mappings, current_hex_pos, current_json_pos)?;
+            let (value_hex_end, value_json_end) = build_mappings(
+                data,
+                json_string,
+                mappings,
+                current_hex_pos,
+                current_json_pos,
+            )?;
             current_hex_pos = value_hex_end;
             current_json_pos = value_json_end;
         }
@@ -878,8 +912,13 @@ fn build_mappings(
 
             current_json_pos = skip_whitespace_and_delimiters(json_string, current_json_pos, ":");
 
-            let (value_hex_end, value_json_end) =
-                build_mappings(data, json_string, mappings, current_hex_pos, current_json_pos)?;
+            let (value_hex_end, value_json_end) = build_mappings(
+                data,
+                json_string,
+                mappings,
+                current_hex_pos,
+                current_json_pos,
+            )?;
             current_hex_pos = value_hex_end;
             current_json_pos = value_json_end;
         }
@@ -957,7 +996,9 @@ mod tests {
         assert_eq!(key_mapping.hex_end, 7); // ends at byte 7 (after 6F)
 
         // Second mapping should be the value 123
-        let value_mapping = mappings.iter().find(|m| m.mapping_type == MappingType::Value);
+        let value_mapping = mappings
+            .iter()
+            .find(|m| m.mapping_type == MappingType::Value);
         assert!(value_mapping.is_some());
         let value_mapping = value_mapping.unwrap();
         assert_eq!(value_mapping.hex_start, 7); // starts at byte 7 (7B)
@@ -973,7 +1014,9 @@ mod tests {
         let mappings = create_position_mappings(&msgpack, json);
 
         assert_eq!(mappings.len(), 3);
-        assert!(mappings.iter().all(|m| m.mapping_type == MappingType::Value));
+        assert!(mappings
+            .iter()
+            .all(|m| m.mapping_type == MappingType::Value));
 
         // Each value should map to a single byte
         assert_eq!(mappings[0].hex_start, 1);
@@ -1045,15 +1088,15 @@ mod tests {
     #[test]
     fn test_safe_array_bounds_checking() {
         let data = vec![0x01, 0x02, 0x03];
-        
+
         // Should succeed
         let result: Result<[u8; 2], String> = safe_array(&data, 0);
         assert!(result.is_ok());
-        
+
         // Should fail - not enough bytes
         let result: Result<[u8; 4], String> = safe_array(&data, 0);
         assert!(result.is_err());
-        
+
         // Should fail - start position too far
         let result: Result<[u8; 2], String> = safe_array(&data, 10);
         assert!(result.is_err());
@@ -1062,11 +1105,11 @@ mod tests {
     #[test]
     fn test_safe_byte_bounds_checking() {
         let data = vec![0x01, 0x02];
-        
+
         // Should succeed
         assert_eq!(safe_byte(&data, 0).unwrap(), 0x01);
         assert_eq!(safe_byte(&data, 1).unwrap(), 0x02);
-        
+
         // Should fail
         assert!(safe_byte(&data, 2).is_err());
         assert!(safe_byte(&data, 100).is_err());

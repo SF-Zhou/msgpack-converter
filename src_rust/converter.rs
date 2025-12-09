@@ -10,23 +10,22 @@ pub fn msgpack_to_json(base64_string: &str) -> Result<String, String> {
         .map_err(|e| format!("Failed to decode base64: {}", e))?;
 
     // Decode msgpack to serde_json::Value
-    let value: Value = rmp_serde::from_slice(&bytes)
-        .map_err(|e| format!("Failed to decode msgpack: {}", e))?;
+    let value: Value =
+        rmp_serde::from_slice(&bytes).map_err(|e| format!("Failed to decode msgpack: {}", e))?;
 
     // Convert to pretty JSON
-    serde_json::to_string_pretty(&value)
-        .map_err(|e| format!("Failed to serialize JSON: {}", e))
+    serde_json::to_string_pretty(&value).map_err(|e| format!("Failed to serialize JSON: {}", e))
 }
 
 /// Convert JSON string to Base64-encoded msgpack data
 pub fn json_to_msgpack(json_string: &str) -> Result<String, String> {
     // Parse JSON to serde_json::Value
-    let value: Value = serde_json::from_str(json_string)
-        .map_err(|e| format!("Failed to parse JSON: {}", e))?;
+    let value: Value =
+        serde_json::from_str(json_string).map_err(|e| format!("Failed to parse JSON: {}", e))?;
 
     // Encode to msgpack
-    let bytes = rmp_serde::to_vec(&value)
-        .map_err(|e| format!("Failed to encode msgpack: {}", e))?;
+    let bytes =
+        rmp_serde::to_vec(&value).map_err(|e| format!("Failed to encode msgpack: {}", e))?;
 
     // Convert to base64
     Ok(base64::engine::general_purpose::STANDARD.encode(&bytes))
@@ -54,7 +53,7 @@ pub fn hex_to_base64(hex_string: &str) -> Result<String, String> {
         return Ok(String::new());
     }
 
-    if clean_hex.len() % 2 != 0 {
+    if !clean_hex.len().is_multiple_of(2) {
         return Err("Hex string must have an even number of characters".to_string());
     }
 
@@ -66,7 +65,9 @@ pub fn hex_to_base64(hex_string: &str) -> Result<String, String> {
     // Convert hex to bytes - safe to unwrap since we validated hex characters above
     let bytes: Vec<u8> = (0..clean_hex.len())
         .step_by(2)
-        .map(|i| u8::from_str_radix(&clean_hex[i..i + 2], 16).map_err(|_| "Invalid hex byte".to_string()))
+        .map(|i| {
+            u8::from_str_radix(&clean_hex[i..i + 2], 16).map_err(|_| "Invalid hex byte".to_string())
+        })
         .collect::<Result<Vec<u8>, String>>()?;
 
     Ok(base64::engine::general_purpose::STANDARD.encode(&bytes))
@@ -120,7 +121,7 @@ mod tests {
         let json_with_order = r#"{"z": 1, "a": 2, "m": 3}"#;
         let msgpack = json_to_msgpack(json_with_order).unwrap();
         let back_to_json = msgpack_to_json(&msgpack).unwrap();
-        
+
         // Parse and verify field order
         let parsed: Value = serde_json::from_str(&back_to_json).unwrap();
         if let Value::Object(map) = parsed {

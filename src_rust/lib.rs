@@ -8,7 +8,9 @@ mod position_mapper;
 
 use converter::{base64_to_hex, hex_to_base64, json_to_msgpack, msgpack_to_json};
 use highlighter::{highlight_hex, highlight_json};
-use position_mapper::{byte_range_to_hex_char_range, create_position_mappings, find_hex_range_for_json_selection};
+use position_mapper::{
+    byte_range_to_hex_char_range, create_position_mappings, find_hex_range_for_json_selection,
+};
 
 #[wasm_bindgen(start)]
 pub fn main() {
@@ -113,9 +115,13 @@ fn App() -> impl IntoView {
         }
 
         // Decode base64 to bytes
-        if let Ok(bytes) = base64::Engine::decode(&base64::engine::general_purpose::STANDARD, base64.trim()) {
+        if let Ok(bytes) =
+            base64::Engine::decode(&base64::engine::general_purpose::STANDARD, base64.trim())
+        {
             let mappings = create_position_mappings(&bytes, &json);
-            if let Some(byte_range) = find_hex_range_for_json_selection(&mappings, sel_start, sel_end) {
+            if let Some(byte_range) =
+                find_hex_range_for_json_selection(&mappings, sel_start, sel_end)
+            {
                 let char_range = byte_range_to_hex_char_range(byte_range.0, byte_range.1);
                 set_hex_highlight_range.set(Some(char_range));
             } else {
