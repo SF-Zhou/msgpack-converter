@@ -25,6 +25,23 @@ pub enum MappingType {
     Container,
 }
 
+/// Safely extract a fixed-size array from a slice with bounds checking.
+/// Returns an error if there aren't enough bytes.
+fn safe_array<const N: usize>(data: &[u8], start: usize) -> Result<[u8; N], String> {
+    if start + N > data.len() {
+        return Err(format!(
+            "Truncated data: expected {} bytes at position {}, but only {} bytes available",
+            N, start, data.len().saturating_sub(start)
+        ));
+    }
+    data[start..start + N].try_into().map_err(|_| "Failed to convert slice to array".to_string())
+}
+
+/// Safely get a byte at a position with bounds checking.
+fn safe_byte(data: &[u8], pos: usize) -> Result<u8, String> {
+    data.get(pos).copied().ok_or_else(|| format!("Unexpected end of data at position {}", pos))
+}
+
 /// Skip whitespace characters in a JSON string starting from a given position.
 fn skip_whitespace(json_string: &str, pos: usize) -> usize {
     let chars: Vec<char> = json_string.chars().collect();
@@ -122,7 +139,7 @@ fn parse_msgpack_value(data: &[u8], pos: usize) -> Result<(serde_json::Value, us
 
     // float 32
     if byte == 0xca {
-        let bytes: [u8; 4] = data[pos + 1..pos + 5].try_into().unwrap();
+        let bytes: [u8; 4] = safe_array(data, pos + 1)?;
         let value = f32::from_be_bytes(bytes) as f64;
         return Ok((
             serde_json::Value::Number(serde_json::Number::from_f64(value).unwrap_or(0.into())),
@@ -132,7 +149,7 @@ fn parse_msgpack_value(data: &[u8], pos: usize) -> Result<(serde_json::Value, us
 
     // float 64
     if byte == 0xcb {
-        let bytes: [u8; 8] = data[pos + 1..pos + 9].try_into().unwrap();
+        let bytes: [u8; 8] = safe_array(data, pos + 1)?;
         let value = f64::from_be_bytes(bytes);
         return Ok((
             serde_json::Value::Number(serde_json::Number::from_f64(value).unwrap_or(0.into())),
@@ -142,72 +159,64 @@ fn parse_msgpack_value(data: &[u8], pos: usize) -> Result<(serde_json::Value, us
 
     // uint 8
     if byte == 0xcc {
-        return Ok((serde_json::Value::Number(data[pos + 1].into()), pos + 2));
+        let value = safe_byte(data, pos + 1)?;
+        return Ok((serde_json::Value::Number(value.into()), pos + 2));
     }
 
     // uint 16
     if byte == 0xcd {
-        let value = u16::from_be_bytes([data[pos + 1], data[pos + 2]]);
+        let bytes: [u8; 2] = safe_array(data, pos + 1)?;
+        let value = u16::from_be_bytes(bytes);
         return Ok((serde_json::Value::Number(value.into()), pos + 3));
     }
 
     // uint 32
     if byte == 0xce {
-        let value = u32::from_be_bytes([data[pos + 1], data[pos + 2], data[pos + 3], data[pos + 4]]);
+        let bytes: [u8; 4] = safe_array(data, pos + 1)?;
+        let value = u32::from_be_bytes(bytes);
         return Ok((serde_json::Value::Number(value.into()), pos + 5));
     }
 
     // uint 64
     if byte == 0xcf {
-        let value = u64::from_be_bytes([
-            data[pos + 1],
-            data[pos + 2],
-            data[pos + 3],
-            data[pos + 4],
-            data[pos + 5],
-            data[pos + 6],
-            data[pos + 7],
-            data[pos + 8],
-        ]);
+        let bytes: [u8; 8] = safe_array(data, pos + 1)?;
+        let value = u64::from_be_bytes(bytes);
         return Ok((serde_json::Value::Number(value.into()), pos + 9));
     }
 
     // int 8
     if byte == 0xd0 {
-        let value = data[pos + 1] as i8;
+        let value = safe_byte(data, pos + 1)? as i8;
         return Ok((serde_json::Value::Number((value as i64).into()), pos + 2));
     }
 
     // int 16
     if byte == 0xd1 {
-        let value = i16::from_be_bytes([data[pos + 1], data[pos + 2]]);
+        let bytes: [u8; 2] = safe_array(data, pos + 1)?;
+        let value = i16::from_be_bytes(bytes);
         return Ok((serde_json::Value::Number((value as i64).into()), pos + 3));
     }
 
     // int 32
     if byte == 0xd2 {
-        let value = i32::from_be_bytes([data[pos + 1], data[pos + 2], data[pos + 3], data[pos + 4]]);
+        let bytes: [u8; 4] = safe_array(data, pos + 1)?;
+        let value = i32::from_be_bytes(bytes);
         return Ok((serde_json::Value::Number((value as i64).into()), pos + 5));
     }
 
     // int 64
     if byte == 0xd3 {
-        let value = i64::from_be_bytes([
-            data[pos + 1],
-            data[pos + 2],
-            data[pos + 3],
-            data[pos + 4],
-            data[pos + 5],
-            data[pos + 6],
-            data[pos + 7],
-            data[pos + 8],
-        ]);
+        let bytes: [u8; 8] = safe_array(data, pos + 1)?;
+        let value = i64::from_be_bytes(bytes);
         return Ok((serde_json::Value::Number(value.into()), pos + 9));
     }
 
     // str 8
     if byte == 0xd9 {
-        let length = data[pos + 1] as usize;
+        let length = safe_byte(data, pos + 1)? as usize;
+        if pos + 2 + length > data.len() {
+            return Err("Truncated string data".to_string());
+        }
         let str_bytes = &data[pos + 2..pos + 2 + length];
         let s = String::from_utf8_lossy(str_bytes).to_string();
         return Ok((serde_json::Value::String(s), pos + 2 + length));
@@ -215,7 +224,11 @@ fn parse_msgpack_value(data: &[u8], pos: usize) -> Result<(serde_json::Value, us
 
     // str 16
     if byte == 0xda {
-        let length = u16::from_be_bytes([data[pos + 1], data[pos + 2]]) as usize;
+        let len_bytes: [u8; 2] = safe_array(data, pos + 1)?;
+        let length = u16::from_be_bytes(len_bytes) as usize;
+        if pos + 3 + length > data.len() {
+            return Err("Truncated string data".to_string());
+        }
         let str_bytes = &data[pos + 3..pos + 3 + length];
         let s = String::from_utf8_lossy(str_bytes).to_string();
         return Ok((serde_json::Value::String(s), pos + 3 + length));
@@ -223,7 +236,11 @@ fn parse_msgpack_value(data: &[u8], pos: usize) -> Result<(serde_json::Value, us
 
     // str 32
     if byte == 0xdb {
-        let length = u32::from_be_bytes([data[pos + 1], data[pos + 2], data[pos + 3], data[pos + 4]]) as usize;
+        let len_bytes: [u8; 4] = safe_array(data, pos + 1)?;
+        let length = u32::from_be_bytes(len_bytes) as usize;
+        if pos + 5 + length > data.len() {
+            return Err("Truncated string data".to_string());
+        }
         let str_bytes = &data[pos + 5..pos + 5 + length];
         let s = String::from_utf8_lossy(str_bytes).to_string();
         return Ok((serde_json::Value::String(s), pos + 5 + length));
@@ -231,7 +248,8 @@ fn parse_msgpack_value(data: &[u8], pos: usize) -> Result<(serde_json::Value, us
 
     // array 16
     if byte == 0xdc {
-        let count = u16::from_be_bytes([data[pos + 1], data[pos + 2]]) as usize;
+        let len_bytes: [u8; 2] = safe_array(data, pos + 1)?;
+        let count = u16::from_be_bytes(len_bytes) as usize;
         let mut current_pos = pos + 3;
         let mut arr = Vec::new();
         for _ in 0..count {
@@ -244,7 +262,8 @@ fn parse_msgpack_value(data: &[u8], pos: usize) -> Result<(serde_json::Value, us
 
     // array 32
     if byte == 0xdd {
-        let count = u32::from_be_bytes([data[pos + 1], data[pos + 2], data[pos + 3], data[pos + 4]]) as usize;
+        let len_bytes: [u8; 4] = safe_array(data, pos + 1)?;
+        let count = u32::from_be_bytes(len_bytes) as usize;
         let mut current_pos = pos + 5;
         let mut arr = Vec::new();
         for _ in 0..count {
@@ -257,7 +276,8 @@ fn parse_msgpack_value(data: &[u8], pos: usize) -> Result<(serde_json::Value, us
 
     // map 16
     if byte == 0xde {
-        let count = u16::from_be_bytes([data[pos + 1], data[pos + 2]]) as usize;
+        let len_bytes: [u8; 2] = safe_array(data, pos + 1)?;
+        let count = u16::from_be_bytes(len_bytes) as usize;
         let mut current_pos = pos + 3;
         let mut obj = serde_json::Map::new();
         for _ in 0..count {
@@ -276,7 +296,8 @@ fn parse_msgpack_value(data: &[u8], pos: usize) -> Result<(serde_json::Value, us
 
     // map 32
     if byte == 0xdf {
-        let count = u32::from_be_bytes([data[pos + 1], data[pos + 2], data[pos + 3], data[pos + 4]]) as usize;
+        let len_bytes: [u8; 4] = safe_array(data, pos + 1)?;
+        let count = u32::from_be_bytes(len_bytes) as usize;
         let mut current_pos = pos + 5;
         let mut obj = serde_json::Map::new();
         for _ in 0..count {
@@ -295,19 +316,21 @@ fn parse_msgpack_value(data: &[u8], pos: usize) -> Result<(serde_json::Value, us
 
     // bin 8
     if byte == 0xc4 {
-        let length = data[pos + 1] as usize;
+        let length = safe_byte(data, pos + 1)? as usize;
         return Ok((serde_json::Value::Null, pos + 2 + length));
     }
 
     // bin 16
     if byte == 0xc5 {
-        let length = u16::from_be_bytes([data[pos + 1], data[pos + 2]]) as usize;
+        let len_bytes: [u8; 2] = safe_array(data, pos + 1)?;
+        let length = u16::from_be_bytes(len_bytes) as usize;
         return Ok((serde_json::Value::Null, pos + 3 + length));
     }
 
     // bin 32
     if byte == 0xc6 {
-        let length = u32::from_be_bytes([data[pos + 1], data[pos + 2], data[pos + 3], data[pos + 4]]) as usize;
+        let len_bytes: [u8; 4] = safe_array(data, pos + 1)?;
+        let length = u32::from_be_bytes(len_bytes) as usize;
         return Ok((serde_json::Value::Null, pos + 5 + length));
     }
 
@@ -490,7 +513,7 @@ fn build_mappings(
 
     // float 32
     if byte == 0xca {
-        let bytes: [u8; 4] = data[hex_pos + 1..hex_pos + 5].try_into().unwrap();
+        let bytes: [u8; 4] = safe_array(data, hex_pos + 1)?;
         let value = f32::from_be_bytes(bytes) as f64;
         let value_str = if value.fract() == 0.0 {
             format!("{}.0", value as i64)
@@ -510,7 +533,7 @@ fn build_mappings(
 
     // float 64
     if byte == 0xcb {
-        let bytes: [u8; 8] = data[hex_pos + 1..hex_pos + 9].try_into().unwrap();
+        let bytes: [u8; 8] = safe_array(data, hex_pos + 1)?;
         let value = f64::from_be_bytes(bytes);
         let value_str = if value.fract() == 0.0 && value.abs() < i64::MAX as f64 {
             format!("{}.0", value as i64)
@@ -530,7 +553,7 @@ fn build_mappings(
 
     // uint 8
     if byte == 0xcc {
-        let value = data[hex_pos + 1];
+        let value = safe_byte(data, hex_pos + 1)?;
         let value_str = value.to_string();
         let end_json_pos = json_pos + value_str.len();
         mappings.push(PositionMapping {
@@ -545,7 +568,8 @@ fn build_mappings(
 
     // uint 16
     if byte == 0xcd {
-        let value = u16::from_be_bytes([data[hex_pos + 1], data[hex_pos + 2]]);
+        let bytes: [u8; 2] = safe_array(data, hex_pos + 1)?;
+        let value = u16::from_be_bytes(bytes);
         let value_str = value.to_string();
         let end_json_pos = json_pos + value_str.len();
         mappings.push(PositionMapping {
@@ -560,7 +584,8 @@ fn build_mappings(
 
     // uint 32
     if byte == 0xce {
-        let value = u32::from_be_bytes([data[hex_pos + 1], data[hex_pos + 2], data[hex_pos + 3], data[hex_pos + 4]]);
+        let bytes: [u8; 4] = safe_array(data, hex_pos + 1)?;
+        let value = u32::from_be_bytes(bytes);
         let value_str = value.to_string();
         let end_json_pos = json_pos + value_str.len();
         mappings.push(PositionMapping {
@@ -575,16 +600,8 @@ fn build_mappings(
 
     // uint 64
     if byte == 0xcf {
-        let value = u64::from_be_bytes([
-            data[hex_pos + 1],
-            data[hex_pos + 2],
-            data[hex_pos + 3],
-            data[hex_pos + 4],
-            data[hex_pos + 5],
-            data[hex_pos + 6],
-            data[hex_pos + 7],
-            data[hex_pos + 8],
-        ]);
+        let bytes: [u8; 8] = safe_array(data, hex_pos + 1)?;
+        let value = u64::from_be_bytes(bytes);
         let value_str = value.to_string();
         let end_json_pos = json_pos + value_str.len();
         mappings.push(PositionMapping {
@@ -599,7 +616,7 @@ fn build_mappings(
 
     // int 8
     if byte == 0xd0 {
-        let value = data[hex_pos + 1] as i8;
+        let value = safe_byte(data, hex_pos + 1)? as i8;
         let value_str = value.to_string();
         let end_json_pos = json_pos + value_str.len();
         mappings.push(PositionMapping {
@@ -614,7 +631,8 @@ fn build_mappings(
 
     // int 16
     if byte == 0xd1 {
-        let value = i16::from_be_bytes([data[hex_pos + 1], data[hex_pos + 2]]);
+        let bytes: [u8; 2] = safe_array(data, hex_pos + 1)?;
+        let value = i16::from_be_bytes(bytes);
         let value_str = value.to_string();
         let end_json_pos = json_pos + value_str.len();
         mappings.push(PositionMapping {
@@ -629,7 +647,8 @@ fn build_mappings(
 
     // int 32
     if byte == 0xd2 {
-        let value = i32::from_be_bytes([data[hex_pos + 1], data[hex_pos + 2], data[hex_pos + 3], data[hex_pos + 4]]);
+        let bytes: [u8; 4] = safe_array(data, hex_pos + 1)?;
+        let value = i32::from_be_bytes(bytes);
         let value_str = value.to_string();
         let end_json_pos = json_pos + value_str.len();
         mappings.push(PositionMapping {
@@ -644,16 +663,8 @@ fn build_mappings(
 
     // int 64
     if byte == 0xd3 {
-        let value = i64::from_be_bytes([
-            data[hex_pos + 1],
-            data[hex_pos + 2],
-            data[hex_pos + 3],
-            data[hex_pos + 4],
-            data[hex_pos + 5],
-            data[hex_pos + 6],
-            data[hex_pos + 7],
-            data[hex_pos + 8],
-        ]);
+        let bytes: [u8; 8] = safe_array(data, hex_pos + 1)?;
+        let value = i64::from_be_bytes(bytes);
         let value_str = value.to_string();
         let end_json_pos = json_pos + value_str.len();
         mappings.push(PositionMapping {
@@ -668,7 +679,10 @@ fn build_mappings(
 
     // str 8
     if byte == 0xd9 {
-        let length = data[hex_pos + 1] as usize;
+        let length = safe_byte(data, hex_pos + 1)? as usize;
+        if hex_pos + 2 + length > data.len() {
+            return Err("Truncated string data".to_string());
+        }
         let str_bytes = &data[hex_pos + 2..hex_pos + 2 + length];
         let s = String::from_utf8_lossy(str_bytes).to_string();
         let json_str = serde_json::to_string(&s).unwrap_or_default();
@@ -685,7 +699,11 @@ fn build_mappings(
 
     // str 16
     if byte == 0xda {
-        let length = u16::from_be_bytes([data[hex_pos + 1], data[hex_pos + 2]]) as usize;
+        let len_bytes: [u8; 2] = safe_array(data, hex_pos + 1)?;
+        let length = u16::from_be_bytes(len_bytes) as usize;
+        if hex_pos + 3 + length > data.len() {
+            return Err("Truncated string data".to_string());
+        }
         let str_bytes = &data[hex_pos + 3..hex_pos + 3 + length];
         let s = String::from_utf8_lossy(str_bytes).to_string();
         let json_str = serde_json::to_string(&s).unwrap_or_default();
@@ -702,7 +720,11 @@ fn build_mappings(
 
     // str 32
     if byte == 0xdb {
-        let length = u32::from_be_bytes([data[hex_pos + 1], data[hex_pos + 2], data[hex_pos + 3], data[hex_pos + 4]]) as usize;
+        let len_bytes: [u8; 4] = safe_array(data, hex_pos + 1)?;
+        let length = u32::from_be_bytes(len_bytes) as usize;
+        if hex_pos + 5 + length > data.len() {
+            return Err("Truncated string data".to_string());
+        }
         let str_bytes = &data[hex_pos + 5..hex_pos + 5 + length];
         let s = String::from_utf8_lossy(str_bytes).to_string();
         let json_str = serde_json::to_string(&s).unwrap_or_default();
@@ -719,7 +741,8 @@ fn build_mappings(
 
     // array 16
     if byte == 0xdc {
-        let count = u16::from_be_bytes([data[hex_pos + 1], data[hex_pos + 2]]) as usize;
+        let len_bytes: [u8; 2] = safe_array(data, hex_pos + 1)?;
+        let count = u16::from_be_bytes(len_bytes) as usize;
         let mut current_json_pos = json_pos;
         if json_pos < json_chars.len() && json_chars[current_json_pos] == '[' {
             current_json_pos += 1;
@@ -744,7 +767,8 @@ fn build_mappings(
 
     // array 32
     if byte == 0xdd {
-        let count = u32::from_be_bytes([data[hex_pos + 1], data[hex_pos + 2], data[hex_pos + 3], data[hex_pos + 4]]) as usize;
+        let len_bytes: [u8; 4] = safe_array(data, hex_pos + 1)?;
+        let count = u32::from_be_bytes(len_bytes) as usize;
         let mut current_json_pos = json_pos;
         if json_pos < json_chars.len() && json_chars[current_json_pos] == '[' {
             current_json_pos += 1;
@@ -769,7 +793,8 @@ fn build_mappings(
 
     // map 16
     if byte == 0xde {
-        let count = u16::from_be_bytes([data[hex_pos + 1], data[hex_pos + 2]]) as usize;
+        let len_bytes: [u8; 2] = safe_array(data, hex_pos + 1)?;
+        let count = u16::from_be_bytes(len_bytes) as usize;
         let mut current_json_pos = json_pos;
         if json_pos < json_chars.len() && json_chars[current_json_pos] == '{' {
             current_json_pos += 1;
@@ -814,7 +839,8 @@ fn build_mappings(
 
     // map 32
     if byte == 0xdf {
-        let count = u32::from_be_bytes([data[hex_pos + 1], data[hex_pos + 2], data[hex_pos + 3], data[hex_pos + 4]]) as usize;
+        let len_bytes: [u8; 4] = safe_array(data, hex_pos + 1)?;
+        let count = u32::from_be_bytes(len_bytes) as usize;
         let mut current_json_pos = json_pos;
         if json_pos < json_chars.len() && json_chars[current_json_pos] == '{' {
             current_json_pos += 1;
@@ -898,4 +924,150 @@ pub fn byte_range_to_hex_char_range(hex_start: usize, hex_end: usize) -> (usize,
     let char_start = hex_start * 3;
     let char_end = hex_end * 3 - 1; // -1 to not include trailing space of last byte
     (char_start, char_end)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_create_position_mappings_simple_object() {
+        // {"hello": 123} in msgpack: 81 A5 68 65 6C 6C 6F 7B
+        let msgpack = vec![0x81, 0xa5, 0x68, 0x65, 0x6c, 0x6c, 0x6f, 0x7b];
+        let json = "{\n  \"hello\": 123\n}";
+
+        let mappings = create_position_mappings(&msgpack, json);
+
+        assert_eq!(mappings.len(), 2);
+
+        // First mapping should be the key "hello"
+        let key_mapping = mappings.iter().find(|m| m.mapping_type == MappingType::Key);
+        assert!(key_mapping.is_some());
+        let key_mapping = key_mapping.unwrap();
+        assert_eq!(key_mapping.hex_start, 1); // starts at byte 1 (A5)
+        assert_eq!(key_mapping.hex_end, 7); // ends at byte 7 (after 6F)
+
+        // Second mapping should be the value 123
+        let value_mapping = mappings.iter().find(|m| m.mapping_type == MappingType::Value);
+        assert!(value_mapping.is_some());
+        let value_mapping = value_mapping.unwrap();
+        assert_eq!(value_mapping.hex_start, 7); // starts at byte 7 (7B)
+        assert_eq!(value_mapping.hex_end, 8); // ends at byte 8
+    }
+
+    #[test]
+    fn test_create_position_mappings_array() {
+        // [1, 2, 3] in msgpack: 93 01 02 03
+        let msgpack = vec![0x93, 0x01, 0x02, 0x03];
+        let json = "[\n  1,\n  2,\n  3\n]";
+
+        let mappings = create_position_mappings(&msgpack, json);
+
+        assert_eq!(mappings.len(), 3);
+        assert!(mappings.iter().all(|m| m.mapping_type == MappingType::Value));
+
+        // Each value should map to a single byte
+        assert_eq!(mappings[0].hex_start, 1);
+        assert_eq!(mappings[0].hex_end, 2);
+        assert_eq!(mappings[1].hex_start, 2);
+        assert_eq!(mappings[1].hex_end, 3);
+        assert_eq!(mappings[2].hex_start, 3);
+        assert_eq!(mappings[2].hex_end, 4);
+    }
+
+    #[test]
+    fn test_create_position_mappings_null_true_false() {
+        // [null, true, false] in msgpack: 93 C0 C3 C2
+        let msgpack = vec![0x93, 0xc0, 0xc3, 0xc2];
+        let json = "[\n  null,\n  true,\n  false\n]";
+
+        let mappings = create_position_mappings(&msgpack, json);
+
+        assert_eq!(mappings.len(), 3);
+    }
+
+    #[test]
+    fn test_find_hex_range_for_json_selection() {
+        let msgpack = vec![0x81, 0xa5, 0x68, 0x65, 0x6c, 0x6c, 0x6f, 0x7b];
+        let json = "{\n  \"hello\": 123\n}";
+        let mappings = create_position_mappings(&msgpack, json);
+
+        // Select "hello" in JSON (including quotes)
+        let hello_start = json.find("\"hello\"").unwrap();
+        let hello_end = hello_start + "\"hello\"".len();
+
+        let range = find_hex_range_for_json_selection(&mappings, hello_start, hello_end);
+
+        assert!(range.is_some());
+        let (hex_start, hex_end) = range.unwrap();
+        assert_eq!(hex_start, 1); // A5
+        assert_eq!(hex_end, 7); // After "hello"
+    }
+
+    #[test]
+    fn test_find_hex_range_no_selection() {
+        let msgpack = vec![0x81, 0xa5, 0x68, 0x65, 0x6c, 0x6c, 0x6f, 0x7b];
+        let json = "{\n  \"hello\": 123\n}";
+        let mappings = create_position_mappings(&msgpack, json);
+
+        // Select just the opening brace
+        let range = find_hex_range_for_json_selection(&mappings, 0, 1);
+        assert!(range.is_none());
+    }
+
+    #[test]
+    fn test_byte_range_to_hex_char_range() {
+        // Byte 0 in "81 A5 68" is "81" at chars 0-1
+        let (start, end) = byte_range_to_hex_char_range(0, 1);
+        assert_eq!(start, 0);
+        assert_eq!(end, 2);
+
+        // Bytes 0-2 in "81 A5 68" is "81 A5" at chars 0-4
+        let (start, end) = byte_range_to_hex_char_range(0, 2);
+        assert_eq!(start, 0);
+        assert_eq!(end, 5);
+
+        // Bytes 1-3 in "81 A5 68 65" is "A5 68" at chars 3-7
+        let (start, end) = byte_range_to_hex_char_range(1, 3);
+        assert_eq!(start, 3);
+        assert_eq!(end, 8);
+    }
+
+    #[test]
+    fn test_safe_array_bounds_checking() {
+        let data = vec![0x01, 0x02, 0x03];
+        
+        // Should succeed
+        let result: Result<[u8; 2], String> = safe_array(&data, 0);
+        assert!(result.is_ok());
+        
+        // Should fail - not enough bytes
+        let result: Result<[u8; 4], String> = safe_array(&data, 0);
+        assert!(result.is_err());
+        
+        // Should fail - start position too far
+        let result: Result<[u8; 2], String> = safe_array(&data, 10);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_safe_byte_bounds_checking() {
+        let data = vec![0x01, 0x02];
+        
+        // Should succeed
+        assert_eq!(safe_byte(&data, 0).unwrap(), 0x01);
+        assert_eq!(safe_byte(&data, 1).unwrap(), 0x02);
+        
+        // Should fail
+        assert!(safe_byte(&data, 2).is_err());
+        assert!(safe_byte(&data, 100).is_err());
+    }
+
+    #[test]
+    fn test_truncated_data_handling() {
+        // Truncated float32 data (needs 5 bytes, only 2 provided)
+        let truncated_data = vec![0xca, 0x40]; // float32 marker + 1 byte
+        let result = parse_msgpack_value(&truncated_data, 0);
+        assert!(result.is_err());
+    }
 }

@@ -75,3 +75,80 @@ pub fn highlight_hex(code: &str, highlight_range: Option<(usize, usize)>) -> Str
         None => escape_html(code),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_escape_html_basic() {
+        assert_eq!(escape_html("hello"), "hello");
+        assert_eq!(escape_html(""), "");
+    }
+
+    #[test]
+    fn test_escape_html_special_chars() {
+        assert_eq!(escape_html("<script>"), "&lt;script&gt;");
+        assert_eq!(escape_html("a & b"), "a &amp; b");
+        assert_eq!(escape_html(r#""quoted""#), "&quot;quoted&quot;");
+        assert_eq!(escape_html("it's"), "it&#039;s");
+    }
+
+    #[test]
+    fn test_escape_html_xss_prevention() {
+        let malicious = r#"<script>alert('xss')</script>"#;
+        let escaped = escape_html(malicious);
+        assert!(!escaped.contains('<'));
+        assert!(!escaped.contains('>'));
+        assert!(escaped.contains("&lt;"));
+        assert!(escaped.contains("&gt;"));
+    }
+
+    #[test]
+    fn test_highlight_hex_empty() {
+        assert_eq!(highlight_hex("", None), "");
+        assert_eq!(highlight_hex("", Some((0, 0))), "");
+    }
+
+    #[test]
+    fn test_highlight_hex_no_range() {
+        assert_eq!(highlight_hex("81 A5", None), "81 A5");
+    }
+
+    #[test]
+    fn test_highlight_hex_with_range() {
+        let result = highlight_hex("81 A5 68", Some((3, 5)));
+        assert!(result.contains(r#"<span class="hex-highlight">A5</span>"#));
+    }
+
+    #[test]
+    fn test_highlight_hex_invalid_range() {
+        // char_start > char_end
+        assert_eq!(highlight_hex("81 A5", Some((5, 3))), "81 A5");
+        // char_end > code.len()
+        assert_eq!(highlight_hex("81 A5", Some((0, 100))), "81 A5");
+    }
+
+    #[test]
+    fn test_highlight_hex_escapes_content() {
+        let result = highlight_hex("<script>", Some((0, 4)));
+        assert!(result.contains("&lt;scr"));
+    }
+
+    // Note: highlight_json tests are only available in wasm32 target
+    // since they require PrismJS/browser environment
+    #[cfg(target_arch = "wasm32")]
+    #[test]
+    fn test_highlight_json_empty() {
+        assert_eq!(highlight_json(""), "");
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    #[test]
+    fn test_highlight_json_fallback() {
+        // Without PrismJS available, should fallback to escaped HTML
+        let result = highlight_json(r#"{"key": "value"}"#);
+        // Should at least be non-empty and contain escaped content
+        assert!(!result.is_empty());
+    }
+}

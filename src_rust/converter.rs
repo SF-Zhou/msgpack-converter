@@ -113,4 +113,21 @@ mod tests {
         let result = hex_to_base64(&hex).unwrap();
         assert_eq!(result, original);
     }
+
+    #[test]
+    fn test_field_order_preserved() {
+        // Test that field order is preserved during JSON conversion
+        let json_with_order = r#"{"z": 1, "a": 2, "m": 3}"#;
+        let msgpack = json_to_msgpack(json_with_order).unwrap();
+        let back_to_json = msgpack_to_json(&msgpack).unwrap();
+        
+        // Parse and verify field order
+        let parsed: Value = serde_json::from_str(&back_to_json).unwrap();
+        if let Value::Object(map) = parsed {
+            let keys: Vec<_> = map.keys().collect();
+            assert_eq!(keys, vec!["z", "a", "m"], "Field order should be preserved");
+        } else {
+            panic!("Expected object");
+        }
+    }
 }
