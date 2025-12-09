@@ -1,0 +1,9 @@
+[build]
+# The output directory for the build
+dist = "dist"
+# The public URL base path for all assets
+public_url = "/msgpack-converter/"
+
+[serve]
+# The port to serve on for development
+port = 8080
