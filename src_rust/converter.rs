@@ -63,10 +63,10 @@ pub fn hex_to_base64(hex_string: &str) -> Result<String, String> {
         return Err("Invalid hex characters".to_string());
     }
 
-    // Convert hex to bytes
+    // Convert hex to bytes - safe to unwrap since we validated hex characters above
     let bytes: Vec<u8> = (0..clean_hex.len())
         .step_by(2)
-        .map(|i| u8::from_str_radix(&clean_hex[i..i + 2], 16).unwrap())
+        .map(|i| u8::from_str_radix(&clean_hex[i..i + 2], 16).expect("validated hex chars"))
         .collect();
 
     Ok(base64::engine::general_purpose::STANDARD.encode(&bytes))

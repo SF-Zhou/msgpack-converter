@@ -7,16 +7,21 @@ pub struct PositionMapping {
     /// HEX byte position (byte indices in the msgpack data)
     pub hex_start: usize,
     pub hex_end: usize,
-    /// Type of the mapped element
+    /// Type of the mapped element (used for debugging and potential future features)
     #[allow(dead_code)]
     pub mapping_type: MappingType,
 }
 
+/// Type of element in the position mapping.
+/// Used for debugging and potential future features like different highlighting styles.
 #[derive(Debug, Clone, PartialEq)]
 #[allow(dead_code)]
 pub enum MappingType {
+    /// A key in a JSON object
     Key,
+    /// A value (string, number, boolean, null, array, or object)
     Value,
+    /// A container element (array or object brackets)
     Container,
 }
 
