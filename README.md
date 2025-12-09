@@ -2,15 +2,17 @@
 
 An online tool for converting between Base64-encoded MessagePack and JSON with full uint64 support.
 
-![MsgPack Converter Screenshot](https://github.com/user-attachments/assets/5cb768e2-a8ea-4b64-8fbc-ca433a8932ec)
+![MsgPack Converter Screenshot](https://github.com/user-attachments/assets/f9ecc9c7-e0fc-416c-9cc1-082fbf415af3)
 
 ## Features
 
 - 🔄 **Bidirectional Conversion**: Convert Base64-encoded MsgPack to JSON and vice versa
-- 🔢 **Full uint64 Support**: Preserves large integers that exceed JavaScript's safe integer limit (2^53 - 1)
+- 🔢 **Full uint64 Support**: Preserves large integers that exceed JavaScript's safe integer limit (2^53 - 1) using Rust's native integer types
 - 🎨 **Beautiful UI**: Clean, modern interface with dark mode support
 - 📱 **Responsive Design**: Works on desktop and mobile devices
-- ✅ **Unit Tested**: Comprehensive tests ensure uint64 values are preserved correctly
+- 🦀 **Rust/WebAssembly**: Built with Leptos framework for fast, reliable conversion
+- 🔍 **JSON Syntax Highlighting**: PrismJS-powered syntax highlighting for JSON
+- ✨ **Hex Highlighting**: Select text in JSON to highlight corresponding bytes in hex view
 
 ## Live Demo
 
@@ -20,33 +22,33 @@ Visit [https://sf-zhou.github.io/msgpack-converter/](https://sf-zhou.github.io/m
 
 ### Prerequisites
 
-- Node.js 18 or higher
-- npm
+- Rust (latest stable)
+- [trunk](https://trunkrs.dev/) - WASM web application bundler
 
 ### Setup
 
 ```bash
-# Install dependencies
-npm install
+# Install trunk
+cargo install trunk
+
+# Add WebAssembly target
+rustup target add wasm32-unknown-unknown
 
 # Start development server
-npm run dev
-
-# Run tests
-npm test
+trunk serve
 
 # Build for production
-npm run build
+trunk build --release
 ```
 
 ### Tech Stack
 
-- **React** - UI framework
-- **TypeScript** - Type safety
-- **Vite** - Build tool
-- **@msgpack/msgpack** - MessagePack encoding/decoding
-- **json-bigint** - JSON parsing with BigInt support
-- **Vitest** - Testing framework
+- **Leptos** - Rust reactive UI framework
+- **WebAssembly** - High-performance web runtime
+- **serde / serde_json** - JSON serialization
+- **rmp-serde** - MessagePack encoding/decoding
+- **PrismJS** - Syntax highlighting
+- **trunk** - WASM build tool
 
 ## License
 
