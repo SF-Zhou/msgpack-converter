@@ -317,6 +317,9 @@ fn parse_msgpack_value(data: &[u8], pos: usize) -> Result<(serde_json::Value, us
     // bin 8
     if byte == 0xc4 {
         let length = safe_byte(data, pos + 1)? as usize;
+        if pos + 2 + length > data.len() {
+            return Err("Truncated binary data".to_string());
+        }
         return Ok((serde_json::Value::Null, pos + 2 + length));
     }
 
@@ -324,6 +327,9 @@ fn parse_msgpack_value(data: &[u8], pos: usize) -> Result<(serde_json::Value, us
     if byte == 0xc5 {
         let len_bytes: [u8; 2] = safe_array(data, pos + 1)?;
         let length = u16::from_be_bytes(len_bytes) as usize;
+        if pos + 3 + length > data.len() {
+            return Err("Truncated binary data".to_string());
+        }
         return Ok((serde_json::Value::Null, pos + 3 + length));
     }
 
@@ -331,6 +337,9 @@ fn parse_msgpack_value(data: &[u8], pos: usize) -> Result<(serde_json::Value, us
     if byte == 0xc6 {
         let len_bytes: [u8; 4] = safe_array(data, pos + 1)?;
         let length = u32::from_be_bytes(len_bytes) as usize;
+        if pos + 5 + length > data.len() {
+            return Err("Truncated binary data".to_string());
+        }
         return Ok((serde_json::Value::Null, pos + 5 + length));
     }
 
