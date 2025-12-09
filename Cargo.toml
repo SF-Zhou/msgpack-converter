@@ -5,7 +5,6 @@ edition = "2021"
 
 [lib]
 crate-type = ["cdylib", "rlib"]
-path = "src_rust/lib.rs"
 
 [dependencies]
 leptos = { version = "0.7", features = ["csr"] }
