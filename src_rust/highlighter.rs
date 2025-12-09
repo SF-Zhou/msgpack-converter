@@ -62,10 +62,15 @@ pub fn highlight_hex(code: &str, highlight_range: Option<(usize, usize)>) -> Str
 
     match highlight_range {
         Some((char_start, char_end)) => {
-            let before = escape_html(&code[..char_start.min(code.len())]);
-            let highlighted = escape_html(&code[char_start.min(code.len())..char_end.min(code.len())]);
-            let after = escape_html(&code[char_end.min(code.len())..]);
-            format!(r#"{}<span class="hex-highlight">{}</span>{}"#, before, highlighted, after)
+            if char_start > char_end || char_end > code.len() {
+                // Invalid range: fallback to escaped HTML
+                escape_html(code)
+            } else {
+                let before = escape_html(&code[..char_start]);
+                let highlighted = escape_html(&code[char_start..char_end]);
+                let after = escape_html(&code[char_end..]);
+                format!(r#"{}<span class="hex-highlight">{}</span>{}"#, before, highlighted, after)
+            }
         }
         None => escape_html(code),
     }
