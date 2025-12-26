@@ -275,10 +275,19 @@ fn HexHighlighter(
 ) -> impl IntoView {
     let on_change = std::rc::Rc::new(on_change);
     let on_change_clone = on_change.clone();
+    let overlay_ref: NodeRef<leptos::html::Pre> = NodeRef::new();
+
+    let handle_scroll = move |ev: web_sys::Event| {
+        let target = event_target::<HtmlTextAreaElement>(&ev);
+        if let Some(overlay) = overlay_ref.get() {
+            overlay.set_scroll_top(target.scroll_top());
+            overlay.set_scroll_left(target.scroll_left());
+        }
+    };
 
     view! {
         <div class="hex-highlighter-container">
-            <pre class="hex-highlight-overlay" aria-hidden="true">
+            <pre class="hex-highlight-overlay" aria-hidden="true" node_ref=overlay_ref>
                 <code inner_html=move || {
                     let html = highlighted_html.get();
                     let value = value.get();
@@ -298,6 +307,7 @@ fn HexHighlighter(
                     let target = event_target::<HtmlTextAreaElement>(&ev);
                     on_change_clone(target.value());
                 }
+                on:scroll=handle_scroll
                 spellcheck="false"
             />
         </div>
@@ -319,6 +329,7 @@ fn JsonHighlighter(
     let on_selection_change_clone1 = on_selection_change.clone();
     let on_selection_change_clone2 = on_selection_change.clone();
     let on_selection_change_clone3 = on_selection_change.clone();
+    let overlay_ref: NodeRef<leptos::html::Pre> = NodeRef::new();
 
     let handle_select = move |ev: web_sys::Event| {
         let target = event_target::<HtmlTextAreaElement>(&ev);
@@ -347,9 +358,17 @@ fn JsonHighlighter(
         }
     };
 
+    let handle_scroll = move |ev: web_sys::Event| {
+        let target = event_target::<HtmlTextAreaElement>(&ev);
+        if let Some(overlay) = overlay_ref.get() {
+            overlay.set_scroll_top(target.scroll_top());
+            overlay.set_scroll_left(target.scroll_left());
+        }
+    };
+
     view! {
         <div class="json-highlighter-container">
-            <pre class="json-highlight-overlay" aria-hidden="true">
+            <pre class="json-highlight-overlay" aria-hidden="true" node_ref=overlay_ref>
                 <code class="language-json" inner_html=move || {
                     let html = highlighted_html.get();
                     let value = value.get();
@@ -372,6 +391,7 @@ fn JsonHighlighter(
                 on:select=handle_select
                 on:mouseup=handle_mouseup
                 on:keyup=handle_keyup
+                on:scroll=handle_scroll
                 spellcheck="false"
             />
         </div>
