@@ -1,6 +1,6 @@
 use leptos::prelude::*;
 use wasm_bindgen::prelude::wasm_bindgen;
-use web_sys::{HtmlPreElement, HtmlTextAreaElement};
+use web_sys::HtmlTextAreaElement;
 
 mod converter;
 mod highlighter;
@@ -280,9 +280,8 @@ fn HexHighlighter(
     let handle_scroll = move |ev: web_sys::Event| {
         let target = event_target::<HtmlTextAreaElement>(&ev);
         if let Some(overlay) = overlay_ref.get() {
-            let overlay_el: &HtmlPreElement = &overlay;
-            overlay_el.set_scroll_top(target.scroll_top());
-            overlay_el.set_scroll_left(target.scroll_left());
+            overlay.set_scroll_top(target.scroll_top());
+            overlay.set_scroll_left(target.scroll_left());
         }
     };
 
@@ -362,9 +361,8 @@ fn JsonHighlighter(
     let handle_scroll = move |ev: web_sys::Event| {
         let target = event_target::<HtmlTextAreaElement>(&ev);
         if let Some(overlay) = overlay_ref.get() {
-            let overlay_el: &HtmlPreElement = &overlay;
-            overlay_el.set_scroll_top(target.scroll_top());
-            overlay_el.set_scroll_left(target.scroll_left());
+            overlay.set_scroll_top(target.scroll_top());
+            overlay.set_scroll_left(target.scroll_left());
         }
     };
 
